@@ -196,13 +196,14 @@ final class OverlayRenderer {
 
             // Translations are usually longer than the original (e.g. Chinese → English), so
             // the label may grow wider and taller than the original text, within limits.
-            var width = min(max(box.width, fontSize * 5), frame.width * 0.6)
+            let maxWidth = min(max(frame.width * 0.6, box.width), frame.width - 4 - padding.width * 2)
+            var width = min(max(box.width, fontSize * 5), maxWidth)
             var string = lensString(for: item, fontSize: fontSize, colors: colors, rtl: content.isRightToLeft)
             var height = measure(string, width: width)
             let maxHeight = max(box.height * 1.7, fontSize * 2.6)
             while height > maxHeight {
-                if width < frame.width * 0.6 {
-                    width = min(width * 1.25, frame.width * 0.6)
+                if width < maxWidth {
+                    width = min(width * 1.25, maxWidth)
                 } else if fontSize > minimumFont {
                     fontSize = max(minimumFont, fontSize * 0.9)
                     string = lensString(for: item, fontSize: fontSize, colors: colors, rtl: content.isRightToLeft)
