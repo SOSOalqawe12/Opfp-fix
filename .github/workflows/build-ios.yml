@@ -1,0 +1,83 @@
+name: Build iOS app
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build FloatLingo.ipa
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest stable Xcode
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release.?candidate' | sort -V | tail -n 1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned, Release)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project FloatLingo.xcodeproj \
+            -scheme FloatLingo \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|warning: .*(deprecated|unavailable)|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" build.log
+
+      - name: Show compiler errors
+        if: failure()
+        run: grep -E -B2 -A6 "error:" build.log | head -300 || true
+
+      - name: Package IPA (ad-hoc signed with App Group entitlements)
+        run: |
+          set -euo pipefail
+          GROUP=$(awk '/FL_APP_GROUP:/ {print $2; exit}' project.yml)
+          APP=build/Build/Products/Release-iphoneos/FloatLingo.app
+          APPEX="$APP/PlugIns/FloatLingoBroadcast.appex"
+          test -d "$APPEX"
+          mkdir -p signing dist/Payload
+          sed "s/\$(FL_APP_GROUP)/$GROUP/g" Config/Broadcast.entitlements > signing/Broadcast.entitlements
+          sed "s/\$(FL_APP_GROUP)/$GROUP/g" Config/App.entitlements > signing/App.entitlements
+          codesign --force --sign - --entitlements signing/Broadcast.entitlements "$APPEX"
+          codesign --force --sign - --entitlements signing/App.entitlements "$APP"
+          codesign -d --entitlements - "$APP" || true
+          cp -R "$APP" dist/Payload/
+          (cd dist && zip -qry FloatLingo.ipa Payload)
+          ls -lh dist/FloatLingo.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloatLingo-ipa
+          path: dist/FloatLingo.ipa
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
