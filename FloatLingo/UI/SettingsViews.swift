@@ -9,8 +9,10 @@ struct AppearanceSettingsView: View {
                 Picker("Show as", selection: $model.settings.displayMode) {
                     ForEach(DisplayMode.allCases) { Text($0.title).tag($0) }
                 }
-                Picker("Window shape", selection: $model.settings.windowShape) {
-                    ForEach(WindowShape.allCases) { Text($0.title).tag($0) }
+                if model.settings.displayMode == .subtitles {
+                    Picker("Bar shape", selection: $model.settings.windowShape) {
+                        ForEach(WindowShape.allCases) { Text($0.title).tag($0) }
+                    }
                 }
                 Toggle("Only the longest text (dialogue)", isOn: $model.settings.onlyLongestText)
                 Toggle("Show original text too", isOn: $model.settings.showOriginal)
@@ -27,7 +29,7 @@ struct AppearanceSettingsView: View {
             Section {
                 EmptyView()
             } footer: {
-                Text("iOS doesn't let any app draw see-through text over other apps, so FloatLingo uses a Picture-in-Picture window. Make it small and park it next to the text, or use the “Screen layout” mode to see translations where the text sits.")
+                Text("Lens shows a dimmed copy of the screen with each translation on top of its original text, so you can see which translation belongs to which button. Subtitles shows only the translated lines in a slim bar. iOS doesn't allow see-through windows over other apps, so pinch the floating window small and park it where it doesn't get in the way.")
             }
         }
         .navigationTitle("Floating window style")

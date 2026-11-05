@@ -56,15 +56,22 @@ struct ContentView: View {
             .tint(model.isBroadcasting ? Color.red : Color.accentColor)
             .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(QuickSetup.allCases) { setup in
-                    let active = setup.isApplied(in: model.settings)
+                    let active = model.isApplied(setup)
                     Button {
                         model.apply(setup)
                     } label: {
-                        Label(setup.title, systemImage: active ? "checkmark" : setup.systemImage)
-                            .font(.subheadline.weight(.medium))
-                            .frame(maxWidth: .infinity)
+                        VStack(spacing: 4) {
+                            Image(systemName: active ? "checkmark.circle.fill" : setup.systemImage)
+                                .font(.title3)
+                            Text(setup.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
                     }
                     .buttonStyle(.bordered)
                     .tint(active ? Color.accentColor : Color.secondary)
@@ -73,8 +80,8 @@ struct ContentView: View {
             .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
         } footer: {
             Text(model.isBroadcasting
-                 ? "Translating. Switch to your game or app — the floating window follows you."
-                 : "Pick “FloatLingo” → Start Broadcast, then switch to your game or app.")
+                 ? "Translating. Switch to your game — pinch the floating window to make it smaller, or swipe it to the edge to hide it."
+                 : "Pick a setup, tap Start, choose “FloatLingo” → Start Broadcast, then switch to your game.")
         }
     }
 

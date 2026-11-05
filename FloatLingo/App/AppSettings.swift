@@ -2,15 +2,15 @@ import CoreGraphics
 import Foundation
 
 enum DisplayMode: String, Codable, CaseIterable, Identifiable {
-    /// Translated lines stacked like subtitles.
+    /// A dimmed copy of the screen with each translation placed on top of its original text.
+    case overlay
+    /// Translated lines stacked like subtitles in a slim bar.
     case subtitles
-    /// Translations drawn where the text sits on screen (a mini map of the screen).
-    case layout
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .subtitles: "Subtitles"
-        case .layout: "Screen layout"
+        case .overlay: "Lens (translations on the screen)"
+        case .subtitles: "Subtitles bar"
         }
     }
 }
@@ -29,10 +29,11 @@ enum OverlayTheme: String, Codable, CaseIterable, Identifiable {
 }
 
 enum WindowShape: String, Codable, CaseIterable, Identifiable {
-    case wide, banner, standard, square, tall, matchScreen
+    case slim, banner, wide, standard, square, tall, matchScreen
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .slim: "Slim bar 3:1"
         case .wide: "Wide 16:9"
         case .banner: "Banner 2:1"
         case .standard: "4:3"
@@ -47,12 +48,13 @@ enum WindowShape: String, Codable, CaseIterable, Identifiable {
         let longSide: CGFloat = 1280
         let aspect: CGFloat
         switch self {
+        case .slim: aspect = 3
         case .wide: aspect = 16.0 / 9.0
         case .banner: aspect = 2.0
         case .standard: aspect = 4.0 / 3.0
         case .square: aspect = 1
         case .tall: aspect = 9.0 / 16.0
-        case .matchScreen: aspect = min(max(regionAspect, 0.5), 2.2)
+        case .matchScreen: aspect = min(max(regionAspect, 0.45), 2.4)
         }
         let size = aspect >= 1
             ? CGSize(width: longSide, height: longSide / aspect)
@@ -112,9 +114,10 @@ struct AppSettings: Codable, Equatable {
     var sourceLanguageID: String? = nil
     var targetLanguageID: String = ""
 
-    var displayMode: DisplayMode = .subtitles
+    var displayMode: DisplayMode = .overlay
     var theme: OverlayTheme = .dark
-    var windowShape: WindowShape = .wide
+    /// Shape of the subtitles bar. Lens mode always matches the captured area.
+    var windowShape: WindowShape = .slim
     var fontScale: Double = 1.0
     var showOriginal: Bool = false
     var onlyLongestText: Bool = false
@@ -154,7 +157,12 @@ struct AppSettings: Codable, Equatable {
         case preferHighFidelity
     }
 
-    static let storageKey = "fl.appSettings.v1"
+    static let storageKey = "fl.appSettings.v2"
+
+    /// The floating window's shape for the current display mode.
+    var effectiveShape: WindowShape {
+        displayMode == .overlay ? .matchScreen : windowShape
+    }
 
     static func load() -> AppSettings {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
@@ -208,45 +216,54 @@ extension AppSettings {
 // MARK: - One-tap setups
 
 enum QuickSetup: String, CaseIterable, Identifiable {
-    case gameDialogue, wholeScreen
+    case chineseGame, dialogue, anyApp
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .gameDialogue: "Game dialogue"
-        case .wholeScreen: "Whole screen"
+        case .chineseGame: "Chinese game"
+        case .dialogue: "Dialogue bar"
+        case .anyApp: "Any app"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .gameDialogue: "gamecontroller"
-        case .wholeScreen: "rectangle.dashed"
+        case .chineseGame: "gamecontroller"
+        case .dialogue: "text.bubble"
+        case .anyApp: "rectangle.dashed"
         }
     }
 
-    func apply(to settings: inout AppSettings) {
+    /// - Parameter chineseID: the catalog id of Simplified Chinese, used by `.chineseGame`.
+    func apply(to settings: inout AppSettings, chineseID: String?) {
         switch self {
-        case .gameDialogue:
+        case .chineseGame:
+            if let chineseID { settings.sourceLanguageID = chineseID }
+            settings.region = .fullScreen
+            settings.displayMode = .overlay
+            settings.onlyLongestText = false
+            settings.languageCorrection = false
+            settings.smallText = true
+        case .dialogue:
             settings.region = .bottomThird
+            settings.displayMode = .subtitles
+            settings.windowShape = .slim
             settings.onlyLongestText = true
             settings.languageCorrection = false
             settings.smallText = true
-            settings.displayMode = .subtitles
-            settings.windowShape = .banner
-        case .wholeScreen:
+        case .anyApp:
             settings.region = .fullScreen
+            settings.displayMode = .overlay
             settings.onlyLongestText = false
             settings.languageCorrection = true
             settings.smallText = true
-            settings.displayMode = .layout
-            settings.windowShape = .matchScreen
         }
     }
 
-    func isApplied(in settings: AppSettings) -> Bool {
+    func isApplied(in settings: AppSettings, chineseID: String?) -> Bool {
         var copy = settings
-        apply(to: &copy)
+        apply(to: &copy, chineseID: chineseID)
         return copy == settings
     }
 }

@@ -48,11 +48,11 @@ been measured on a device yet. The real number is shown live in the floating win
 (`● Live · 0.6 s`) and in the app. The biggest speed-ups, in order:
 
 1. Choose the exact **From** language instead of Auto-detect.
-2. Read only part of the screen (**Game dialogue** does this in one tap).
+2. Read only part of the screen (**Dialogue bar** does this in one tap).
 3. Leave **More fluent translations** off.
 3. The translation is drawn into video frames and played in a **Picture-in-Picture** window.
-   You can drag it anywhere, pinch to resize, or hide it at the screen edge. Its play/pause
-   button freezes the translation.
+   You can drag it anywhere, pinch to make it smaller or bigger, or swipe it to the screen edge
+   to hide it. Its play/pause button freezes the translation.
 
 ### Why not a see-through overlay like on Android?
 
@@ -60,10 +60,13 @@ iOS and iPadOS don't let any app draw over other apps. There is no equivalent of
 `SYSTEM_ALERT_WINDOW` or accessibility overlay. Picture in Picture is the only public surface
 that floats above every app. FloatLingo makes the most of it:
 
-- **Subtitles mode**: a compact subtitle bar (16:9, 2:1, 4:3, square or tall).
-- **Screen layout mode**: translations drawn where the text sits on screen, like a mini map of
-  the game screen.
-- **Colors**: dark, black, light, or yellow subtitles, with adjustable text size and the option to
+- **Lens mode** (default): the window shows a dimmed, blurred copy of the screen with each
+  translation placed exactly on top of the text it translates, like Google Lens. You can see
+  which translation belongs to which button or line. The window takes the shape of the game
+  (a wide strip for landscape games).
+- **Subtitles bar**: only the translated lines, large, in a slim 3:1 bar. Best for dialogue.
+  It stays readable when pinched small.
+- **Colors**: dark, black, light, or yellow, with adjustable text size and the option to
   show the original text.
 - **Screen area**: read only part of the screen (for example the dialogue box), which is faster
   and keeps the floating window out of the capture.
@@ -101,18 +104,22 @@ open FloatLingo.xcodeproj
 
 1. **Languages**: choose *From* (the language on screen, for example Chinese) and *To* (your
    language, for example Arabic). Tap **Download languages** if asked.
-2. Optional: tap **Game dialogue** (games) or **Whole screen** (apps, menus, websites).
+2. Pick a one-tap setup:
+   - **Chinese game** (for example One Piece Fighting Path): reads Chinese, Lens mode, whole screen.
+   - **Dialogue bar**: reads only the bottom third and shows the dialogue in a slim subtitle bar.
+   - **Any app**: Lens mode for the whole screen, keeping your chosen languages.
 3. Tap **Start translating**, choose *FloatLingo*, then *Start Broadcast*.
    You can also long-press *Screen Recording* in Control Center.
 4. Switch to your game. The floating window opens automatically and shows translations live.
 
 ### Tips for *One Piece Fighting Path* and other games
 
-- Set **From** to *Chinese (Simplified)* instead of Auto-detect.
-- Tap **Game dialogue**. It reads only the bottom third, shows only the dialogue and turns off
-  language correction (better for character names). If the dialogue box sits elsewhere, set a
-  custom area in **Capture & recognition**.
-- Park the floating window outside the area being read.
+- Tap **Chinese game**. It sets *From* to Chinese (Simplified) and uses Lens mode, so every
+  menu label and button shows its translation in the right place.
+- For story scenes, switch to **Dialogue bar**. It's a much smaller window that shows just the
+  dialogue.
+- Pinch the floating window down to its smallest size while you play. Pinch it bigger, or tap
+  ❚❚, when you want to read a menu.
 
 ## Troubleshooting
 
@@ -151,6 +158,8 @@ FloatLingo/UI                   SwiftUI screens
 لذلك تُعرض الترجمة في نافذة «صورة داخل صورة» (PiP) يمكنك تحريكها وتصغيرها وإخفاؤها على حافة الشاشة.
 
 **طريقة الاستخدام:** اختر لغة الشاشة (مثلاً الصينية) ولغتك (العربية) ←
-اضغط «Game dialogue» للألعاب ← اضغط «Start translating» واختر FloatLingo ثم Start Broadcast ← افتح اللعبة.
+اضغط «Chinese game» ← اضغط «Start translating» واختر FloatLingo ثم Start Broadcast ← افتح اللعبة.
+في وضع **Lens** تظهر كل ترجمة فوق الكلمة الأصلية في نسخة مصغّرة من الشاشة، فتعرف أي ترجمة لأي زر.
+لتصغير النافذة: قرّبها بإصبعين (pinch)، أو اسحبها إلى حافة الشاشة لإخفائها.
 
 **التثبيت بدون ماك:** من تبويب Actions حمّل ملف FloatLingo.ipa ثم ثبّته عبر Sideloadly أو AltStore.

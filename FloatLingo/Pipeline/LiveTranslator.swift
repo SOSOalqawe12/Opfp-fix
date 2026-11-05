@@ -49,6 +49,8 @@ final class LiveTranslator: ObservableObject {
     private var regionAspect: CGFloat = 16.0 / 9.0
     private var lastNonEmpty = Date.distantPast
     private var items: [OverlayItem] = []
+    private var background: CGImage?
+    private var hasRecognized = false
     private var presented: [Candidate] = []
 
     /// Normalized translations we drew recently. The screen capture also sees the floating
@@ -90,6 +92,7 @@ final class LiveTranslator: ObservableObject {
     func clear() {
         entries = []
         items = []
+        background = nil
         presented = []
         refreshOverlay()
     }
@@ -186,7 +189,12 @@ final class LiveTranslator: ObservableObject {
             // Keep the previous lines briefly so dialogue doesn't flicker between frames.
         } else {
             presented = translated
-            items = translated.map { OverlayItem(original: $0.block.text, translation: $0.translation, rect: $0.block.rect) }
+            background = recognition.preview
+            hasRecognized = true
+            items = translated.map {
+                OverlayItem(original: $0.block.text, translation: $0.translation, rect: $0.block.rect,
+                            lineCount: $0.block.lineCount)
+            }
             entries = translated.enumerated().map { index, item in
                 Entry(id: index, original: item.block.text, translation: item.translation,
                       sourceName: displayName(of: item.language))
@@ -345,6 +353,7 @@ final class LiveTranslator: ObservableObject {
         var content = OverlayContent()
         content.items = items
         content.regionAspect = regionAspect
+        content.background = background
         content.isRightToLeft = target?.isRightToLeft ?? false
 
         let sourceName = catalog.option(id: settings.sourceLanguageID)?.nativeName ?? "Auto"
@@ -361,7 +370,9 @@ final class LiveTranslator: ObservableObject {
             if !missingLanguages.isEmpty {
                 content.status = "⬇︎ Download \(missingLanguages.joined(separator: ", ")) in FloatLingo · \(pair)"
             }
-            if items.isEmpty { content.placeholder = "Waiting for text to translate…" }
+            if items.isEmpty {
+                content.placeholder = hasRecognized ? "No text to translate here" : "Waiting for the screen…"
+            }
         }
 
         let style = OverlayStyle(mode: settings.displayMode, theme: settings.theme, shape: settings.windowShape,
@@ -372,7 +383,7 @@ final class LiveTranslator: ObservableObject {
     }
 
     var previewAspect: CGFloat {
-        let size = settings.windowShape.canvasSize(regionAspect: regionAspect)
+        let size = settings.effectiveShape.canvasSize(regionAspect: regionAspect)
         return size.width / max(size.height, 1)
     }
 }

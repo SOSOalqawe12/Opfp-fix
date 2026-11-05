@@ -9,6 +9,7 @@ struct TextBlock: Hashable {
     /// Normalized rect inside the captured region, origin top-left.
     var rect: CGRect
     var confidence: Float
+    var lineCount: Int
 }
 
 struct RecognitionConfig {
@@ -28,6 +29,9 @@ struct RecognitionResult {
     var frameTimestamp: Double
     var frameSequence: UInt64
     var duration: TimeInterval
+    /// Low-resolution copy of the region that was read, used as the Lens background.
+    /// It is deliberately too small for its own text to be read back by OCR.
+    var preview: CGImage?
 }
 
 enum TextRecognizer {
@@ -82,12 +86,14 @@ enum TextRecognizer {
                 text: block.text,
                 rect: CGRect(x: block.rect.minX / pixelWidth, y: block.rect.minY / pixelHeight,
                              width: block.rect.width / pixelWidth, height: block.rect.height / pixelHeight),
-                confidence: block.confidence
+                confidence: block.confidence,
+                lineCount: block.lines.count
             )
         }
         return RecognitionResult(blocks: blocks, regionAspect: pixelWidth / pixelHeight,
                                  frameTimestamp: frame.timestamp, frameSequence: frame.sequence,
-                                 duration: Date().timeIntervalSince(started))
+                                 duration: Date().timeIntervalSince(started),
+                                 preview: makePreview(of: image))
     }
 
     // MARK: - Grouping lines into blocks
@@ -154,6 +160,20 @@ enum TextRecognizer {
     }
 
     // MARK: - Image helpers
+
+    private static func makePreview(of image: CGImage) -> CGImage? {
+        let scale = min(1, 360 / CGFloat(max(image.width, image.height)))
+        let width = max(1, Int(CGFloat(image.width) * scale))
+        let height = max(1, Int(CGFloat(image.height) * scale))
+        guard let context = CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
 
     private static func grayImage(from frame: CapturedFrame) -> CGImage? {
         guard let provider = CGDataProvider(data: frame.pixels as CFData) else { return nil }

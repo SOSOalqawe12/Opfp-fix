@@ -142,8 +142,17 @@ final class AppModel: ObservableObject {
         broadcast.open()
     }
 
+    /// Catalog id of Simplified Chinese, for the "Chinese game" setup.
+    var chineseID: String? {
+        catalog.options.first { $0.language.code == "zh" && $0.language.script?.identifier != "Hant" }?.id
+    }
+
     func apply(_ setup: QuickSetup) {
-        setup.apply(to: &settings)
+        setup.apply(to: &settings, chineseID: chineseID)
+    }
+
+    func isApplied(_ setup: QuickSetup) -> Bool {
+        setup.isApplied(in: settings, chineseID: chineseID)
     }
 
     func swapLanguages() {
