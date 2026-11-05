@@ -37,7 +37,7 @@ struct AppearanceSettingsView: View {
 struct CaptureSettingsView: View {
     @EnvironmentObject private var model: AppModel
 
-    private let fpsOptions: [Double] = [0.5, 1, 2, 3, 4]
+    private let fpsOptions: [Double] = [1, 2, 3, 5, 8]
 
     var body: some View {
         Form {
@@ -60,7 +60,7 @@ struct CaptureSettingsView: View {
             Section {
                 Picker("Updates per second", selection: $model.settings.captureFPS) {
                     ForEach(fpsOptions, id: \.self) { fps in
-                        Text(fps < 1 ? "1 every 2 s" : "\(Int(fps))").tag(fps)
+                        Text(fps == 5 ? "5 (recommended)" : "\(Int(fps))").tag(fps)
                     }
                 }
                 Picker("Quality", selection: $model.settings.captureQuality) {
@@ -71,7 +71,7 @@ struct CaptureSettingsView: View {
             } header: {
                 Text("Speed")
             } footer: {
-                Text("Unchanged screens are skipped automatically, so battery use stays low while nothing moves. Turn off language correction for names, numbers and game terms.")
+                Text("Higher is more real-time but uses more battery. Unchanged screens are skipped automatically. Turn off language correction for names, numbers and game terms.")
             }
 
             Section {
@@ -152,7 +152,7 @@ struct LiveTextView: View {
             LazyVStack(alignment: .leading, spacing: 18) {
                 if translator.entries.isEmpty {
                     ContentUnavailableView("Nothing to translate yet", systemImage: "text.viewfinder",
-                                           description: Text("Start screen capture and open another app."))
+                                           description: Text("Tap Start translating and open another app."))
                 }
                 ForEach(translator.entries) { entry in
                     VStack(alignment: .leading, spacing: 6) {

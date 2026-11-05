@@ -134,6 +134,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// One tap: make sure the floating window is ready, then show the system broadcast sheet
+    /// (which also offers "Stop Broadcast" while capture is running).
+    func startOrStopTranslating() {
+        floating.setUp(autoStart: settings.autoStartFloatingWindow)
+        if !isBroadcasting { translator.reprocess() }
+        broadcast.open()
+    }
+
+    func apply(_ setup: QuickSetup) {
+        setup.apply(to: &settings)
+    }
+
     func swapLanguages() {
         guard let source = settings.sourceLanguageID else { return }
         let target = settings.targetLanguageID

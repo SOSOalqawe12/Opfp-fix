@@ -147,6 +147,13 @@ struct AppSettings: Codable, Equatable {
         }
     }
 
+    enum CodingKeys: String, CodingKey {
+        case sourceLanguageID, targetLanguageID, displayMode, theme, windowShape, fontScale, showOriginal
+        case onlyLongestText, autoStartFloatingWindow, captureFPS, captureQuality, region
+        case customTop, customBottom, customLeft, customRight, rotation, languageCorrection, smallText
+        case preferHighFidelity
+    }
+
     static let storageKey = "fl.appSettings.v1"
 
     static func load() -> AppSettings {
@@ -162,5 +169,84 @@ struct AppSettings: Codable, Equatable {
         }
         SharedDefaults.captureFPS = captureFPS
         SharedDefaults.captureLongSide = captureQuality.rawValue
+    }
+}
+
+// MARK: - Tolerant decoding
+
+extension AppSettings {
+    /// Missing or unknown values fall back to their defaults, so settings survive app updates.
+    init(from decoder: Decoder) throws {
+        self.init()
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func read<T: Decodable>(_ key: CodingKeys, into value: inout T) {
+            if let decoded = try? container.decodeIfPresent(T.self, forKey: key) { value = decoded }
+        }
+        read(.sourceLanguageID, into: &sourceLanguageID)
+        read(.targetLanguageID, into: &targetLanguageID)
+        read(.displayMode, into: &displayMode)
+        read(.theme, into: &theme)
+        read(.windowShape, into: &windowShape)
+        read(.fontScale, into: &fontScale)
+        read(.showOriginal, into: &showOriginal)
+        read(.onlyLongestText, into: &onlyLongestText)
+        read(.autoStartFloatingWindow, into: &autoStartFloatingWindow)
+        read(.captureFPS, into: &captureFPS)
+        read(.captureQuality, into: &captureQuality)
+        read(.region, into: &region)
+        read(.customTop, into: &customTop)
+        read(.customBottom, into: &customBottom)
+        read(.customLeft, into: &customLeft)
+        read(.customRight, into: &customRight)
+        read(.rotation, into: &rotation)
+        read(.languageCorrection, into: &languageCorrection)
+        read(.smallText, into: &smallText)
+        read(.preferHighFidelity, into: &preferHighFidelity)
+    }
+}
+
+// MARK: - One-tap setups
+
+enum QuickSetup: String, CaseIterable, Identifiable {
+    case gameDialogue, wholeScreen
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .gameDialogue: "Game dialogue"
+        case .wholeScreen: "Whole screen"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .gameDialogue: "gamecontroller"
+        case .wholeScreen: "rectangle.dashed"
+        }
+    }
+
+    func apply(to settings: inout AppSettings) {
+        switch self {
+        case .gameDialogue:
+            settings.region = .bottomThird
+            settings.onlyLongestText = true
+            settings.languageCorrection = false
+            settings.smallText = true
+            settings.displayMode = .subtitles
+            settings.windowShape = .banner
+        case .wholeScreen:
+            settings.region = .fullScreen
+            settings.onlyLongestText = false
+            settings.languageCorrection = true
+            settings.smallText = true
+            settings.displayMode = .layout
+            settings.windowShape = .matchScreen
+        }
+    }
+
+    func isApplied(in settings: AppSettings) -> Bool {
+        var copy = settings
+        apply(to: &copy)
+        return copy == settings
     }
 }

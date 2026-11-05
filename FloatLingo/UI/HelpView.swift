@@ -5,15 +5,15 @@ struct HelpView: View {
         List {
             Section("Quick start") {
                 Step(number: 1, text: "Pick the language on screen (From) and your language (To). Download them if asked.")
-                Step(number: 2, text: "Tap “Start screen capture”, choose FloatLingo, then Start Broadcast.")
+                Step(number: 2, text: "Tap “Start translating”, choose FloatLingo, then Start Broadcast.")
                 Step(number: 3, text: "Open your game or app. The floating window appears and shows translations live.")
                 Step(number: 4, text: "Move the window where it doesn't cover what you need. Pinch it to resize, swipe it to the side to hide it.")
             }
 
             Section("Tips for games") {
                 Text("Set From to the game's language (for example Chinese) instead of Auto-detect — recognition is faster and more accurate.")
-                Text("In Capture & recognition, choose “Bottom third” or a custom area around the dialogue box.")
-                Text("Turn on “Only the longest text” so menus and buttons don't crowd out the dialogue.")
+                Text("Tap “Game dialogue” on the main screen: it reads only the bottom third, shows just the dialogue and turns off language correction.")
+                Text("Reading a smaller area is the biggest speed boost. Use a custom area around the dialogue box if it isn't at the bottom.")
                 Text("Use the floating window's ❚❚ button to freeze a translation while you read it.")
             }
 

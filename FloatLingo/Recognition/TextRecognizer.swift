@@ -26,6 +26,7 @@ struct RecognitionResult {
     /// width / height of the region that was read, in pixels.
     var regionAspect: CGFloat
     var frameTimestamp: Double
+    var frameSequence: UInt64
     var duration: TimeInterval
 }
 
@@ -85,7 +86,8 @@ enum TextRecognizer {
             )
         }
         return RecognitionResult(blocks: blocks, regionAspect: pixelWidth / pixelHeight,
-                                 frameTimestamp: frame.timestamp, duration: Date().timeIntervalSince(started))
+                                 frameTimestamp: frame.timestamp, frameSequence: frame.sequence,
+                                 duration: Date().timeIntervalSince(started))
     }
 
     // MARK: - Grouping lines into blocks

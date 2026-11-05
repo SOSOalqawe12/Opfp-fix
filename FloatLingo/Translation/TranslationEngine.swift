@@ -47,8 +47,18 @@ final class TranslationEngine {
         return state
     }
 
+    /// Cache keys ignore whitespace differences, which OCR produces a lot of.
+    private func cacheKey(_ text: String, _ pair: String) -> String {
+        pair + "|" + text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
     func cachedTranslation(of text: String, from source: Locale.Language, to target: Locale.Language) -> String? {
-        cache[key(source, target) + "|" + text]
+        cache[cacheKey(text, key(source, target))]
+    }
+
+    /// Records a translation obtained some other way (e.g. reused for a near-identical OCR result).
+    func remember(_ translation: String, for text: String, from source: Locale.Language, to target: Locale.Language) {
+        store(translation, for: cacheKey(text, key(source, target)))
     }
 
     /// Translates `texts` (all in `source`), returning `[original: translation]`.
@@ -57,7 +67,7 @@ final class TranslationEngine {
         var result: [String: String] = [:]
         var missing: [String] = []
         for text in Set(texts) {
-            if let hit = cache[pair + "|" + text] { result[text] = hit } else { missing.append(text) }
+            if let hit = cache[cacheKey(text, pair)] { result[text] = hit } else { missing.append(text) }
         }
         guard !missing.isEmpty else { return result }
 
@@ -71,7 +81,7 @@ final class TranslationEngine {
                 guard let id = response.clientIdentifier, let index = Int(id), missing.indices.contains(index) else { continue }
                 let original = missing[index]
                 result[original] = response.targetText
-                store(response.targetText, for: pair + "|" + original)
+                store(response.targetText, for: cacheKey(original, pair))
             }
         } catch {
             // A broken session (e.g. languages removed in Settings) is rebuilt next time.

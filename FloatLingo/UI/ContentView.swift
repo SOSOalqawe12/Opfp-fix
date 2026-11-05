@@ -12,6 +12,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 FloatingPreview()
                 Form {
+                    startSection
                     statusSection
                     languageSection
                     floatingSection
@@ -39,6 +40,43 @@ struct ContentView: View {
     }
 
     // MARK: Sections
+
+    private var startSection: some View {
+        Section {
+            Button {
+                model.startOrStopTranslating()
+            } label: {
+                Label(model.isBroadcasting ? "Stop translating" : "Start translating",
+                      systemImage: model.isBroadcasting ? "stop.fill" : "play.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(model.isBroadcasting ? Color.red : Color.accentColor)
+            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+
+            HStack(spacing: 10) {
+                ForEach(QuickSetup.allCases) { setup in
+                    let active = setup.isApplied(in: model.settings)
+                    Button {
+                        model.apply(setup)
+                    } label: {
+                        Label(setup.title, systemImage: active ? "checkmark" : setup.systemImage)
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(active ? Color.accentColor : Color.secondary)
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
+        } footer: {
+            Text(model.isBroadcasting
+                 ? "Translating. Switch to your game or app — the floating window follows you."
+                 : "Pick “FloatLingo” → Start Broadcast, then switch to your game or app.")
+        }
+    }
 
     private var statusSection: some View {
         Section {
@@ -153,13 +191,9 @@ struct ContentView: View {
     private var captureSection: some View {
         Section {
             HStack {
-                Button {
-                    model.broadcast.open()
-                } label: {
-                    Label(model.isBroadcasting ? "Stop screen capture" : "Start screen capture",
-                          systemImage: model.isBroadcasting ? "stop.circle.fill" : "record.circle")
-                        .foregroundStyle(model.isBroadcasting ? Color.red : Color.accentColor)
-                }
+                Label(model.isBroadcasting ? "Screen capture is on" : "Screen capture is off",
+                      systemImage: model.isBroadcasting ? "record.circle.fill" : "record.circle")
+                    .foregroundStyle(model.isBroadcasting ? Color.red : Color.secondary)
                 Spacer()
                 BroadcastPickerHost(picker: model.broadcast.picker)
                     .frame(width: 36, height: 36)
@@ -167,7 +201,7 @@ struct ContentView: View {
         } header: {
             Text("3 · Screen capture")
         } footer: {
-            Text("Choose “FloatLingo” and tap Start Broadcast. FloatLingo reads the text on screen to translate it; nothing is recorded or uploaded. You can also start it from Control Center: long-press Screen Recording.")
+            Text("FloatLingo reads the text on screen to translate it; nothing is recorded or uploaded. If the Start button doesn't open the broadcast sheet, tap the round icon, or long-press Screen Recording in Control Center.")
         }
     }
 

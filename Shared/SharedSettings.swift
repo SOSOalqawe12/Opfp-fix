@@ -14,13 +14,13 @@ enum SharedKeys {
 }
 
 enum SharedDefaults {
-    static let defaultFPS: Double = 2
+    static let defaultFPS: Double = 5
     static let defaultLongSide: Int = 1920
 
     static var captureFPS: Double {
         get {
             let value = AppGroup.defaults.double(forKey: SharedKeys.captureFPS)
-            return value > 0 ? min(max(value, 0.25), 10) : defaultFPS
+            return value > 0 ? min(max(value, 0.25), 12) : defaultFPS
         }
         set { AppGroup.defaults.set(newValue, forKey: SharedKeys.captureFPS) }
     }

@@ -3,6 +3,9 @@ import Foundation
 
 /// The real-time loop: newest screen frame → OCR → language filtering → translation →
 /// floating window (and the in-app live list).
+///
+/// OCR and translation are two pipelined stages: while one frame is being translated, the next
+/// frame is already being read, and each stage always works on the newest data it has.
 @MainActor
 final class LiveTranslator: ObservableObject {
     struct Entry: Identifiable, Hashable {
@@ -13,6 +16,7 @@ final class LiveTranslator: ObservableObject {
     }
 
     @Published private(set) var entries: [Entry] = []
+    /// Seconds from screen capture to translation on screen, for the last update.
     @Published private(set) var lastLatency: TimeInterval?
     @Published private(set) var lastError: String?
     /// Source languages detected on screen that still need a download.
@@ -29,13 +33,23 @@ final class LiveTranslator: ObservableObject {
     private let floating: FloatingWindowController
     private let catalog: LanguageCatalog
 
-    private var isRunning = false
-    private var needsAnotherPass = false
+    // OCR stage
+    private var ocrRunning = false
+    private var ocrAgain = false
     private var forceNextPass = false
-    private var lastFrameTimestamp: Double = 0
+    private var lastFrameSequence: UInt64 = 0
+    private var unchangedPasses = 0
+    private var lastRecognizedKey = ""
+
+    // Translation stage
+    private var pendingRecognition: RecognitionResult?
+    private var translating = false
+
+    // Output
     private var regionAspect: CGFloat = 16.0 / 9.0
     private var lastNonEmpty = Date.distantPast
     private var items: [OverlayItem] = []
+    private var presented: [Candidate] = []
 
     /// Normalized translations we drew recently. The screen capture also sees the floating
     /// window, so text matching these must not be translated again.
@@ -51,17 +65,18 @@ final class LiveTranslator: ObservableObject {
 
     func frameDidArrive() {
         guard !isPaused else { return }
-        if isRunning {
-            needsAnotherPass = true
+        if ocrRunning {
+            ocrAgain = true
             return
         }
-        isRunning = true
-        Task { await runLoop() }
+        ocrRunning = true
+        Task { await ocrLoop() }
     }
 
     /// Re-read the latest frame with the current settings (languages, region, …).
     func reprocess() {
         forceNextPass = true
+        unchangedPasses = 0
         SignalCenter.shared.post(.requestFreshFrame)
         frameDidArrive()
         refreshOverlay()
@@ -75,17 +90,8 @@ final class LiveTranslator: ObservableObject {
     func clear() {
         entries = []
         items = []
+        presented = []
         refreshOverlay()
-    }
-
-    // MARK: - Loop
-
-    private func runLoop() async {
-        repeat {
-            needsAnotherPass = false
-            await processLatestFrame()
-        } while needsAnotherPass && !isPaused
-        isRunning = false
     }
 
     private var targetLanguage: Locale.Language? {
@@ -96,8 +102,24 @@ final class LiveTranslator: ObservableObject {
         catalog.option(id: settings.sourceLanguageID)?.language
     }
 
-    private func processLatestFrame() async {
-        guard let target = targetLanguage else { return }
+    // MARK: - Stage 1: OCR
+
+    private func ocrLoop() async {
+        repeat {
+            ocrAgain = false
+            // When the text on screen hasn't changed for a while (only the background moves),
+            // breathe a little between passes to save battery.
+            if unchangedPasses >= 6 && !forceNextPass {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            if let result = await recognizeLatestFrame() {
+                submit(result)
+            }
+        } while ocrAgain && !isPaused
+        ocrRunning = false
+    }
+
+    private func recognizeLatestFrame() async -> RecognitionResult? {
         let source = sourceLanguage
         let config = RecognitionConfig(
             languages: source.map(LanguageCatalog.ocrLanguages(for:)) ?? [],
@@ -108,11 +130,11 @@ final class LiveTranslator: ObservableObject {
         )
         let force = forceNextPass
         forceNextPass = false
-        let previousTimestamp = lastFrameTimestamp
+        let previousSequence = lastFrameSequence
 
         let outcome = await Task.detached(priority: .userInitiated) { () -> Result<RecognitionResult?, Error> in
-            guard let frame = FrameFile.read() else { return .success(nil) }
-            if !force && frame.timestamp == previousTimestamp { return .success(nil) }
+            guard let frame = SharedFrameBuffer.shared?.readLatest() else { return .success(nil) }
+            if !force && frame.sequence == previousSequence { return .success(nil) }
             do {
                 return .success(try TextRecognizer.recognize(frame, config: config))
             } catch {
@@ -120,27 +142,50 @@ final class LiveTranslator: ObservableObject {
             }
         }.value
 
-        let recognition: RecognitionResult
         switch outcome {
         case .failure(let error):
             lastError = "Text recognition failed: \(error.localizedDescription)"
-            return
+            return nil
         case .success(nil):
-            return
-        case .success(let value?):
-            recognition = value
+            return nil
+        case .success(let result?):
+            lastFrameSequence = result.frameSequence
+            let key = result.blocks.map(\.text).joined(separator: "\n")
+            unchangedPasses = key == lastRecognizedKey ? unchangedPasses + 1 : 0
+            lastRecognizedKey = key
+            return result
         }
+    }
 
-        let started = Date()
-        lastFrameTimestamp = recognition.frameTimestamp
+    // MARK: - Stage 2: filter, translate, present
+
+    private func submit(_ result: RecognitionResult) {
+        pendingRecognition = result // newer results replace older ones that haven't started yet
+        guard !translating else { return }
+        translating = true
+        Task { await translateLoop() }
+    }
+
+    private func translateLoop() async {
+        while let next = pendingRecognition {
+            pendingRecognition = nil
+            await present(next)
+        }
+        translating = false
+    }
+
+    private func present(_ recognition: RecognitionResult) async {
+        guard let target = targetLanguage else { return }
         regionAspect = recognition.regionAspect
 
-        let candidates = classify(recognition.blocks, source: source, target: target)
+        var candidates = classify(recognition.blocks, source: sourceLanguage, target: target)
+        reuseKnownTranslations(&candidates, target: target)
         let translated = await translate(candidates, to: target)
 
-        if translated.isEmpty && Date().timeIntervalSince(lastNonEmpty) < 4 && !force {
+        if translated.isEmpty && Date().timeIntervalSince(lastNonEmpty) < 2 {
             // Keep the previous lines briefly so dialogue doesn't flicker between frames.
         } else {
+            presented = translated
             items = translated.map { OverlayItem(original: $0.block.text, translation: $0.translation, rect: $0.block.rect) }
             entries = translated.enumerated().map { index, item in
                 Entry(id: index, original: item.block.text, translation: item.translation,
@@ -151,7 +196,7 @@ final class LiveTranslator: ObservableObject {
         for item in translated {
             if let translation = item.translation { remember(output: translation) }
         }
-        lastLatency = recognition.duration + Date().timeIntervalSince(started)
+        lastLatency = max(0, Date().timeIntervalSince1970 - recognition.frameTimestamp)
         refreshOverlay()
     }
 
@@ -202,11 +247,34 @@ final class LiveTranslator: ObservableObject {
         return result
     }
 
+    /// Fills in translations we already have: exact cache hits, and text that is almost the same
+    /// as something on screen a moment ago (OCR often misreads a character or two between frames).
+    /// This avoids re-translating — and flickering — on recognition noise.
+    private func reuseKnownTranslations(_ candidates: inout [Candidate], target: Locale.Language) {
+        for index in candidates.indices {
+            let candidate = candidates[index]
+            if let cached = engine.cachedTranslation(of: candidate.block.text, from: candidate.language, to: target) {
+                candidates[index].translation = cached
+                continue
+            }
+            let text = Self.normalized(candidate.block.text)
+            let match = presented.first { previous in
+                guard previous.translation != nil, previous.language.isSameLanguage(as: candidate.language) else { return false }
+                return Self.similarity(text, Self.normalized(previous.block.text)) >= 0.86
+            }
+            if let match, let translation = match.translation {
+                candidates[index].translation = translation
+                engine.remember(translation, for: candidate.block.text, from: candidate.language, to: target)
+            }
+        }
+    }
+
     private func translate(_ candidates: [Candidate], to target: Locale.Language) async -> [Candidate] {
         var output = candidates
         var needsDownload = Set<String>()
         var missingNames: [String] = []
-        let groups = Dictionary(grouping: candidates.indices, by: { candidates[$0].language.maximalIdentifier })
+        let untranslated = candidates.indices.filter { candidates[$0].translation == nil }
+        let groups = Dictionary(grouping: untranslated, by: { candidates[$0].language.maximalIdentifier })
 
         for (languageID, indices) in groups {
             guard let first = indices.first else { continue }
@@ -249,6 +317,27 @@ final class LiveTranslator: ObservableObject {
         String(String.UnicodeScalarView(text.lowercased().unicodeScalars.filter { $0.properties.isAlphabetic || $0.properties.numericType != nil }))
     }
 
+    /// 1 − normalized Levenshtein distance, on Unicode scalars.
+    static func similarity(_ a: String, _ b: String) -> Double {
+        if a == b { return 1 }
+        let x = Array(a.unicodeScalars), y = Array(b.unicodeScalars)
+        guard !x.isEmpty, !y.isEmpty else { return 0 }
+        let longest = max(x.count, y.count)
+        // Quick reject when lengths are too different, and cap the work for long paragraphs.
+        if Double(abs(x.count - y.count)) / Double(longest) > 0.2 || longest > 400 { return 0 }
+        var previous = Array(0...y.count)
+        var current = [Int](repeating: 0, count: y.count + 1)
+        for i in 1...x.count {
+            current[0] = i
+            for j in 1...y.count {
+                let cost = x[i - 1] == y[j - 1] ? 0 : 1
+                current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+            }
+            swap(&previous, &current)
+        }
+        return 1 - Double(previous[y.count]) / Double(longest)
+    }
+
     // MARK: - Floating window
 
     func refreshOverlay() {
@@ -265,9 +354,10 @@ final class LiveTranslator: ObservableObject {
             if items.isEmpty { content.placeholder = "Paused — tap ▶ to resume" }
         } else if !isBroadcasting {
             content.status = "○ Capture off · \(pair)"
-            if items.isEmpty { content.placeholder = "Open FloatLingo and tap\n“Start screen capture”" }
+            if items.isEmpty { content.placeholder = "Open FloatLingo and tap\n“Start translating”" }
         } else {
-            content.status = "● Live · \(pair)"
+            let speed = lastLatency.map { String(format: " · %.1f s", $0) } ?? ""
+            content.status = "● Live\(speed) · \(pair)"
             if !missingLanguages.isEmpty {
                 content.status = "⬇︎ Download \(missingLanguages.joined(separator: ", ")) in FloatLingo · \(pair)"
             }

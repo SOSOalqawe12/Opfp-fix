@@ -22,19 +22,34 @@ overlays (for example the ones people use for *One Piece Fighting Path*), built 
         │ ReplayKit screen broadcast                      └─────────────────────────┘
         ▼                                                             ▲
   FloatLingoBroadcast (extension)                                     │
-  throttle → skip unchanged frames → downscale → App Group file       │
+  throttle → skip unchanged frames → downscale → shared memory        │
         │ Darwin notification                                         │
         ▼                                                             │
   FloatLingo app (kept alive by Picture in Picture)                   │
-  Vision OCR → group lines → detect language → Apple Translation ─────┘
+  Vision OCR ⇄ (pipelined) ⇄ detect language → Apple Translation ─────┘
 ```
 
-1. A **Broadcast Upload Extension** receives the screen while capture is on. It reads 0.5–4
-   frames per second, skips frames that didn't change, keeps only the brightness channel,
-   downsizes it and drops it into the shared App Group container.
+1. A **Broadcast Upload Extension** receives the screen while capture is on. It looks at up to
+   5 frames per second (adjustable 1–8), skips frames whose content didn't change since the
+   last frame it sent, keeps only the brightness channel, downsizes it and hands it to the app
+   through a shared-memory double buffer (no file is written per frame).
 2. The **app** reads the text with Vision, joins the lines into paragraphs, filters out
    numbers, text that is already in your language, and its own floating window. Then it
-   translates with `TranslationSession`, using a cache so repeated menu text is instant.
+   translates with `TranslationSession`.
+   - Reading the next screen and translating the current one happen at the same time.
+   - Translations are cached, and text that differs from a moment ago by only a misread
+     character reuses its translation. Repeated text appears instantly and doesn't flicker.
+
+### Speed
+
+Typical delay from text appearing to its translation is estimated at roughly 0.5–1.5 s, depending
+on the device, how much of the screen is read, and whether the text was seen before. This hasn't
+been measured on a device yet. The real number is shown live in the floating window
+(`● Live · 0.6 s`) and in the app. The biggest speed-ups, in order:
+
+1. Choose the exact **From** language instead of Auto-detect.
+2. Read only part of the screen (**Game dialogue** does this in one tap).
+3. Leave **More fluent translations** off.
 3. The translation is drawn into video frames and played in a **Picture-in-Picture** window.
    You can drag it anywhere, pinch to resize, or hide it at the screen edge. Its play/pause
    button freezes the translation.
@@ -86,18 +101,18 @@ open FloatLingo.xcodeproj
 
 1. **Languages**: choose *From* (the language on screen, for example Chinese) and *To* (your
    language, for example Arabic). Tap **Download languages** if asked.
-2. **Floating window**: tap **Open floating window**, or just leave the app; it opens automatically.
-3. **Screen capture**: tap **Start screen capture**, choose *FloatLingo*, then *Start Broadcast*.
+2. Optional: tap **Game dialogue** (games) or **Whole screen** (apps, menus, websites).
+3. Tap **Start translating**, choose *FloatLingo*, then *Start Broadcast*.
    You can also long-press *Screen Recording* in Control Center.
-4. Open your game. Translations appear in the floating window within about a second.
+4. Switch to your game. The floating window opens automatically and shows translations live.
 
 ### Tips for *One Piece Fighting Path* and other games
 
 - Set **From** to *Chinese (Simplified)* instead of Auto-detect.
-- In **Capture & recognition → Screen area**, choose *Bottom third (dialogue)* or a custom area.
-- Turn on **Only the longest text (dialogue)** so buttons and menus don't crowd the window.
+- Tap **Game dialogue**. It reads only the bottom third, shows only the dialogue and turns off
+  language correction (better for character names). If the dialogue box sits elsewhere, set a
+  custom area in **Capture & recognition**.
 - Park the floating window outside the area being read.
-- Turn off **Language correction** if character names come out wrong.
 
 ## Troubleshooting
 
@@ -114,7 +129,7 @@ open FloatLingo.xcodeproj
 ```
 project.yml                     XcodeGen spec (app + broadcast extension)
 Config/                         Info.plists and entitlements
-Shared/                         Code shared by both targets (App Group, frame file, signals)
+Shared/                         Code shared by both targets (App Group, shared-memory frames, signals)
 FloatLingoBroadcast/            ReplayKit Broadcast Upload Extension
 FloatLingo/App                  App entry, settings, app model
 FloatLingo/Recognition          Vision OCR + line grouping
@@ -135,7 +150,7 @@ FloatLingo/UI                   SwiftUI screens
 ملاحظة مهمة: نظام iOS لا يسمح لأي تطبيق بالرسم بشفافية فوق التطبيقات الأخرى كما في أندرويد،
 لذلك تُعرض الترجمة في نافذة «صورة داخل صورة» (PiP) يمكنك تحريكها وتصغيرها وإخفاؤها على حافة الشاشة.
 
-**طريقة الاستخدام:** اختر لغة الشاشة (مثلاً الصينية) ولغتك (العربية) ← افتح النافذة العائمة ←
-اضغط «Start screen capture» واختر FloatLingo ثم Start Broadcast ← افتح اللعبة.
+**طريقة الاستخدام:** اختر لغة الشاشة (مثلاً الصينية) ولغتك (العربية) ←
+اضغط «Game dialogue» للألعاب ← اضغط «Start translating» واختر FloatLingo ثم Start Broadcast ← افتح اللعبة.
 
 **التثبيت بدون ماك:** من تبويب Actions حمّل ملف FloatLingo.ipa ثم ثبّته عبر Sideloadly أو AltStore.

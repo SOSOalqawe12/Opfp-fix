@@ -7,16 +7,16 @@ import ReplayKit
 /// Broadcast Upload Extension.
 ///
 /// Runs in its own process with a ~50 MB memory limit, so it does as little as possible:
-/// it throttles the incoming screen frames, skips frames that did not change, downsamples
-/// the luma (brightness) plane and drops it into the App Group for the app to OCR + translate.
+/// it throttles the incoming screen frames, drops frames whose content didn't change, downsamples
+/// the luma (brightness) plane and hands it to the app through shared memory.
 final class SampleHandler: RPBroadcastSampleHandler {
     private let lock = NSLock()
     private var forceNextFrame = true
 
+    private var buffer: SharedFrameBuffer?
     private var lastFrameTime: TimeInterval = 0
-    private var lastWriteTime: TimeInterval = 0
+    private var lastPublishTime: TimeInterval = 0
     private var lastSettingsRead: TimeInterval = 0
-    private var sequence: UInt64 = 0
 
     private var fps = SharedDefaults.defaultFPS
     private var longSide = SharedDefaults.defaultLongSide
@@ -24,20 +24,22 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private var scaled = PlanarBuffer()
     private var converted = PlanarBuffer()
     private var thumbnail = PlanarBuffer()
-    private var previousThumbnail: [UInt8] = []
+    /// Thumbnail of the last frame that was actually sent to the app.
+    private var referenceThumbnail: [UInt8] = []
 
-    private static let thumbnailSize = 96
+    private static let thumbnailSize = 128
 
     // MARK: Lifecycle
 
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
-        guard AppGroup.isAvailable else {
+        guard AppGroup.isAvailable, let buffer = SharedFrameBuffer() else {
             let error = NSError(domain: "FloatLingo", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "FloatLingo can't reach its App Group (\(AppGroup.identifier)). Re-install the app with the App Groups capability enabled for both the app and the broadcast extension.",
             ])
             finishBroadcastWithError(error)
             return
         }
+        self.buffer = buffer
         readSettings()
         AppGroup.defaults.set(true, forKey: SharedKeys.broadcastActive)
         writeHeartbeat()
@@ -54,13 +56,14 @@ final class SampleHandler: RPBroadcastSampleHandler {
     override func broadcastFinished() {
         AppGroup.defaults.set(false, forKey: SharedKeys.broadcastActive)
         SignalCenter.shared.post(.broadcastStopped)
+        buffer = nil
         scaled.free(); converted.free(); thumbnail.free()
     }
 
     // MARK: Frames
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
-        guard sampleBufferType == .video else { return }
+        guard sampleBufferType == .video, buffer != nil else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
         if now - lastSettingsRead > 1 {
@@ -82,16 +85,29 @@ final class SampleHandler: RPBroadcastSampleHandler {
     }
 
     private func handle(_ pixelBuffer: CVPixelBuffer, orientation: UInt32, force: Bool, now: TimeInterval) {
+        guard let buffer else { return }
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         guard var luma = lumaBuffer(of: pixelBuffer) else { return }
 
-        // Downsample so OCR in the app stays fast and the file stays small.
+        // Cheap check first: skip frames that look like the last frame we sent
+        // (static menus, dialogue waiting for a tap…). Comparing with the last *sent* frame
+        // means text that appears letter by letter still adds up to a change.
+        guard let current = makeThumbnail(of: luma) else { return }
+        let changed = differs(current, from: referenceThumbnail)
+        guard force || changed || now - lastPublishTime > 15 else { return }
+
+        // Downsample so OCR in the app stays fast; always fit the shared-memory slot.
         let srcWidth = Int(luma.width), srcHeight = Int(luma.height)
         let longest = max(srcWidth, srcHeight)
-        if longSide > 0, longest > longSide {
-            let scale = Double(longSide) / Double(longest)
+        var target = longSide > 0 ? min(longSide, longest) : longest
+        let capacity = Double(SharedFrameBuffer.slotCapacity) * 0.9
+        if Double(srcWidth * srcHeight) * pow(Double(target) / Double(longest), 2) > capacity {
+            target = Int(Double(longest) * (capacity / Double(srcWidth * srcHeight)).squareRoot())
+        }
+        if target < longest {
+            let scale = Double(target) / Double(longest)
             let width = max(1, Int((Double(srcWidth) * scale).rounded()))
             let height = max(1, Int((Double(srcHeight) * scale).rounded()))
             guard var destination = scaled.buffer(width: width, height: height) else { return }
@@ -99,27 +115,18 @@ final class SampleHandler: RPBroadcastSampleHandler {
             luma = destination
         }
 
-        // Skip frames that look the same as the previous one (static menus, paused dialogue…).
-        let changed = hasChanged(luma)
-        guard force || changed || now - lastWriteTime > 15 else { return }
+        guard let pixels = luma.data, buffer.publish(
+            width: Int(luma.width),
+            height: Int(luma.height),
+            bytesPerRow: luma.rowBytes,
+            orientation: orientation,
+            timestamp: Date().timeIntervalSince1970,
+            pixels: UnsafeRawPointer(pixels)
+        ) else { return }
 
-        sequence &+= 1
-        let byteCount = Int(luma.height) * luma.rowBytes
-        do {
-            try FrameFile.write(
-                width: Int(luma.width),
-                height: Int(luma.height),
-                bytesPerRow: luma.rowBytes,
-                orientation: orientation,
-                timestamp: Date().timeIntervalSince1970,
-                sequence: sequence,
-                pixels: UnsafeRawBufferPointer(start: luma.data, count: byteCount)
-            )
-            lastWriteTime = now
-            SignalCenter.shared.post(.frameReady)
-        } catch {
-            // Disk full or container missing: try again on the next frame.
-        }
+        referenceThumbnail = current
+        lastPublishTime = now
+        SignalCenter.shared.post(.frameReady)
     }
 
     /// Returns a vImage view of the brightness channel of a ReplayKit frame.
@@ -159,32 +166,33 @@ final class SampleHandler: RPBroadcastSampleHandler {
         }
     }
 
-    private func hasChanged(_ luma: vImage_Buffer) -> Bool {
+    private func makeThumbnail(of luma: vImage_Buffer) -> [UInt8]? {
         var source = luma
         let side = Self.thumbnailSize
-        guard var small = thumbnail.buffer(width: side, height: side), let smallData = small.data else { return true }
-        guard vImageScale_Planar8(&source, &small, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else { return true }
-
+        guard var small = thumbnail.buffer(width: side, height: side), let smallData = small.data else { return nil }
+        guard vImageScale_Planar8(&source, &small, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else { return nil }
         let pointer = smallData.assumingMemoryBound(to: UInt8.self)
-        var current = [UInt8](repeating: 0, count: side * side)
+        var result = [UInt8](repeating: 0, count: side * side)
         for y in 0..<side {
             for x in 0..<side {
-                current[y * side + x] = pointer[y * small.rowBytes + x]
+                result[y * side + x] = pointer[y * small.rowBytes + x]
             }
         }
-        defer { previousThumbnail = current }
-        guard previousThumbnail.count == current.count else { return true }
+        return result
+    }
 
+    private func differs(_ current: [UInt8], from reference: [UInt8]) -> Bool {
+        guard reference.count == current.count else { return true }
         var total = 0
-        var maximum = 0
+        var strongCells = 0
         for i in 0..<current.count {
-            let diff = abs(Int(current[i]) - Int(previousThumbnail[i]))
+            let diff = abs(Int(current[i]) - Int(reference[i]))
             total += diff
-            if diff > maximum { maximum = diff }
+            if diff > 14 { strongCells += 1 }
         }
         let mean = Double(total) / Double(current.count)
-        // A local change (new dialogue line) moves a few cells a lot; a global change moves the mean.
-        return mean > 0.6 || maximum > 18
+        // New text changes a few cells a lot; scene changes move the mean.
+        return mean > 0.5 || strongCells >= 2
     }
 
     // MARK: Helpers
