@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import ReplayKit
 import SwiftUI
 import Translation
@@ -30,6 +31,7 @@ final class AppModel: ObservableObject {
     let floating: FloatingWindowController
     let translator: LiveTranslator
     let broadcast = BroadcastLauncher()
+    let liveActivity = LiveActivityController()
 
     private var timer: Timer?
     private var tickCount = 0
@@ -57,7 +59,16 @@ final class AppModel: ObservableObject {
         settings.save()
 
         floating.setUp(autoStart: settings.autoStartFloatingWindow)
-        floating.onPauseChanged = { [weak self] paused in self?.translator.setPaused(paused) }
+        floating.onPauseChanged = { [weak self] paused in
+            guard let self else { return }
+            self.translator.setPaused(paused)
+            self.liveActivity.setStatus(paused ? "Paused" : "Live", pair: self.pairLabel)
+        }
+        liveActivity.popUpNewLines = settings.popUpNewLines
+        translator.onNewLine = { [weak self] translation, original in
+            guard let self, self.settings.dynamicIsland else { return }
+            self.liveActivity.show(translation: translation, original: original)
+        }
         translator.refreshOverlay()
 
         SignalCenter.shared.observe(.frameReady) { [weak self] in
@@ -103,7 +114,16 @@ final class AppModel: ObservableObject {
         let wasBroadcasting = isBroadcasting
         isBroadcasting = alive
         translator.isBroadcasting = alive
-        if alive && !wasBroadcasting { translator.reprocess() } else { translator.refreshOverlay() }
+        if alive && !wasBroadcasting {
+            translator.prewarm()
+            translator.reprocess()
+            if settings.dynamicIsland, UIApplication.shared.applicationState == .active {
+                liveActivity.start(pair: pairLabel)
+            }
+        } else {
+            translator.refreshOverlay()
+        }
+        if !alive && wasBroadcasting { liveActivity.stop() }
     }
 
     // MARK: - Settings
@@ -113,6 +133,11 @@ final class AppModel: ObservableObject {
         settings.save()
         translator.settings = settings
         floating.setAutoStart(settings.autoStartFloatingWindow)
+        liveActivity.popUpNewLines = settings.popUpNewLines
+        if old.dynamicIsland != settings.dynamicIsland {
+            if settings.dynamicIsland && isBroadcasting { liveActivity.start(pair: pairLabel) }
+            if !settings.dynamicIsland { liveActivity.stop() }
+        }
 
         let languagesChanged = old.sourceLanguageID != settings.sourceLanguageID || old.targetLanguageID != settings.targetLanguageID
         let recognitionChanged = languagesChanged
@@ -125,6 +150,8 @@ final class AppModel: ObservableObject {
 
         if languagesChanged {
             translator.clear()
+            translator.prewarm()
+            liveActivity.setStatus("Live", pair: pairLabel)
             Task { await refreshPairStatus() }
         }
         if recognitionChanged {
@@ -138,8 +165,20 @@ final class AppModel: ObservableObject {
     /// (which also offers "Stop Broadcast" while capture is running).
     func startOrStopTranslating() {
         floating.setUp(autoStart: settings.autoStartFloatingWindow)
-        if !isBroadcasting { translator.reprocess() }
+        if !isBroadcasting {
+            translator.prewarm()
+            translator.reprocess()
+            // Live Activities can only be started from the foreground, so do it now.
+            if settings.dynamicIsland { liveActivity.start(pair: pairLabel) }
+        }
         broadcast.open()
+    }
+
+    /// e.g. "中文 → English".
+    var pairLabel: String {
+        let source = catalog.option(id: settings.sourceLanguageID)?.nativeName ?? "Auto"
+        let target = catalog.option(id: settings.targetLanguageID)?.name ?? "?"
+        return "\(source) → \(target)"
     }
 
     /// Catalog id of Simplified Chinese, for the "Chinese game" setup.

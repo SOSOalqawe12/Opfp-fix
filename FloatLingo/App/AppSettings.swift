@@ -134,6 +134,8 @@ struct AppSettings: Codable, Equatable {
     var languageCorrection: Bool = true
     var smallText: Bool = true
     var preferHighFidelity: Bool = false
+    var dynamicIsland: Bool = true
+    var popUpNewLines: Bool = false
 
     /// Area of the (upright) screen to read, normalized, origin top-left.
     var regionRect: CGRect {
@@ -154,7 +156,7 @@ struct AppSettings: Codable, Equatable {
         case sourceLanguageID, targetLanguageID, displayMode, theme, windowShape, fontScale, showOriginal
         case onlyLongestText, autoStartFloatingWindow, captureFPS, captureQuality, region
         case customTop, customBottom, customLeft, customRight, rotation, languageCorrection, smallText
-        case preferHighFidelity
+        case preferHighFidelity, dynamicIsland, popUpNewLines
     }
 
     static let storageKey = "fl.appSettings.v2"
@@ -210,6 +212,8 @@ extension AppSettings {
         read(.languageCorrection, into: &languageCorrection)
         read(.smallText, into: &smallText)
         read(.preferHighFidelity, into: &preferHighFidelity)
+        read(.dynamicIsland, into: &dynamicIsland)
+        read(.popUpNewLines, into: &popUpNewLines)
     }
 }
 

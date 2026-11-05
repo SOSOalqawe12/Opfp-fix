@@ -27,6 +27,15 @@ struct AppearanceSettingsView: View {
                 }
             }
             Section {
+                Toggle("Show in the Dynamic Island", isOn: $model.settings.dynamicIsland)
+                Toggle("Pop up each new line", isOn: $model.settings.popUpNewLines)
+                    .disabled(!model.settings.dynamicIsland)
+            } header: {
+                Text("Dynamic Island & Lock Screen")
+            } footer: {
+                Text("The newest translated line also appears in the Dynamic Island — long-press it to read the whole line, without any window over your game. “Pop up each new line” opens it briefly for every new line (a banner on iPhones without a Dynamic Island); iOS may limit how often.")
+            }
+            Section {
                 EmptyView()
             } footer: {
                 Text("Lens shows a dimmed copy of the screen with each translation on top of its original text, so you can see which translation belongs to which button. Subtitles shows only the translated lines in a slim bar. iOS doesn't allow see-through windows over other apps, so pinch the floating window small and park it where it doesn't get in the way.")

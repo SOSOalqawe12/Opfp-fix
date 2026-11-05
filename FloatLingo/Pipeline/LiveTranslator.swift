@@ -29,7 +29,11 @@ final class LiveTranslator: ObservableObject {
     var isBroadcasting = false
 
     let engine = TranslationEngine()
+    /// Called with (translation, original) whenever a new line of text has been translated.
+    var onNewLine: ((String, String) -> Void)?
+    private let recognizer = TextRecognizer()
     private let renderer = OverlayRenderer()
+    private var lastAnnounced = ""
     private let floating: FloatingWindowController
     private let catalog: LanguageCatalog
 
@@ -52,6 +56,7 @@ final class LiveTranslator: ObservableObject {
     private var background: CGImage?
     private var hasRecognized = false
     private var presented: [Candidate] = []
+    private var presentedBefore = Set<String>()
 
     /// Normalized translations we drew recently. The screen capture also sees the floating
     /// window, so text matching these must not be translated again.
@@ -77,6 +82,7 @@ final class LiveTranslator: ObservableObject {
 
     /// Re-read the latest frame with the current settings (languages, region, …).
     func reprocess() {
+        recognizer.reset()
         forceNextPass = true
         unchangedPasses = 0
         SignalCenter.shared.post(.requestFreshFrame)
@@ -90,6 +96,7 @@ final class LiveTranslator: ObservableObject {
     }
 
     func clear() {
+        lastAnnounced = ""
         entries = []
         items = []
         background = nil
@@ -134,12 +141,13 @@ final class LiveTranslator: ObservableObject {
         let force = forceNextPass
         forceNextPass = false
         let previousSequence = lastFrameSequence
+        let recognizer = recognizer
 
         let outcome = await Task.detached(priority: .userInitiated) { () -> Result<RecognitionResult?, Error> in
             guard let frame = SharedFrameBuffer.shared?.readLatest() else { return .success(nil) }
             if !force && frame.sequence == previousSequence { return .success(nil) }
             do {
-                return .success(try TextRecognizer.recognize(frame, config: config))
+                return .success(try recognizer.recognize(frame, config: config))
             } catch {
                 return .failure(error)
             }
@@ -188,6 +196,7 @@ final class LiveTranslator: ObservableObject {
         if translated.isEmpty && Date().timeIntervalSince(lastNonEmpty) < 2 {
             // Keep the previous lines briefly so dialogue doesn't flicker between frames.
         } else {
+            presentedBefore = Set(presented.map(\.block.text))
             presented = translated
             background = recognition.preview
             hasRecognized = true
@@ -204,6 +213,7 @@ final class LiveTranslator: ObservableObject {
         for item in translated {
             if let translation = item.translation { remember(output: translation) }
         }
+        announceNewestLine(in: translated)
         lastLatency = max(0, Date().timeIntervalSince1970 - recognition.frameTimestamp)
         refreshOverlay()
     }
@@ -306,6 +316,29 @@ final class LiveTranslator: ObservableObject {
         missingLanguages = missingNames.sorted()
         // Unsupported pairs are dropped; pairs that still need a download show the original text.
         return output.filter { $0.translation != nil || needsDownload.contains($0.language.maximalIdentifier) }
+    }
+
+    /// Picks the line that just appeared (the longest one that wasn't on screen before) and
+    /// reports it, for the Dynamic Island / Lock Screen.
+    private func announceNewestLine(in translated: [Candidate]) {
+        let withTranslation = translated.filter { ($0.translation ?? "").isEmpty == false }
+        let appeared = withTranslation.filter { !presentedBefore.contains($0.block.text) }
+        let pool = appeared.isEmpty && lastAnnounced.isEmpty ? withTranslation : appeared
+        guard let newest = pool.max(by: { $0.block.text.count < $1.block.text.count }),
+              let translation = newest.translation,
+              translation != lastAnnounced
+        else { return }
+        lastAnnounced = translation
+        onNewLine?(translation, newest.block.text)
+    }
+
+    /// Warms up the translation model so the first real line isn't slow.
+    func prewarm() {
+        guard let source = sourceLanguage, let target = targetLanguage, !source.isSameLanguage(as: target) else { return }
+        Task {
+            guard await engine.state(from: source, to: target) == .ready else { return }
+            _ = try? await engine.translate(["OK"], from: source, to: target)
+        }
     }
 
     private func displayName(of language: Locale.Language) -> String {

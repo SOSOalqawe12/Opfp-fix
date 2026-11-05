@@ -30,8 +30,11 @@ targets:
     sources:
       - path: FloatLingo
       - path: Shared
+      - path: ActivityShared
     dependencies:
       - target: FloatLingoBroadcast
+        embed: true
+      - target: FloatLingoWidgets
         embed: true
     settings:
       base:
@@ -56,5 +59,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_PREFIX).broadcast
         INFOPLIST_FILE: Config/Broadcast-Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/Broadcast.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+
+  FloatLingoWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: FloatLingoWidgets
+      - path: ActivityShared
+    settings:
+      base:
+        PRODUCT_NAME: FloatLingoWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_PREFIX).widgets
+        INFOPLIST_FILE: Config/Widgets-Info.plist
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES

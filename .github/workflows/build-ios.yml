@@ -66,7 +66,11 @@ jobs:
           sed "s/\$(FL_APP_GROUP)/$GROUP/g" Config/Broadcast.entitlements > signing/Broadcast.entitlements
           sed "s/\$(FL_APP_GROUP)/$GROUP/g" Config/App.entitlements > signing/App.entitlements
           codesign --force --sign - --entitlements signing/Broadcast.entitlements "$APPEX"
+          for EXTRA in "$APP"/PlugIns/*.appex; do
+            [ "$EXTRA" = "$APPEX" ] || codesign --force --sign - "$EXTRA"
+          done
           codesign --force --sign - --entitlements signing/App.entitlements "$APP"
+          ls "$APP/PlugIns"
           codesign -d --entitlements - "$APP" || true
           cp -R "$APP" dist/Payload/
           (cd dist && zip -qry FloatLingo.ipa Payload)

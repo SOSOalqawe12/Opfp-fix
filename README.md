@@ -37,6 +37,10 @@ overlays (for example the ones people use for *One Piece Fighting Path*), built 
    numbers, text that is already in your language, and its own floating window. Then it
    translates with `TranslationSession`.
    - Reading the next screen and translating the current one happen at the same time.
+   - Only the part of the screen that changed is read again (plus any line it touches). If
+     nothing changed, reading is skipped completely, and the whole screen is still re-read
+     every few seconds. A new dialogue line on a still background takes much less time than a
+     full read.
    - Translations are cached, and text that differs from a moment ago by only a misread
      character reuses its translation. Repeated text appears instantly and doesn't flicker.
 
@@ -50,7 +54,11 @@ been measured on a device yet. The real number is shown live in the floating win
 1. Choose the exact **From** language instead of Auto-detect.
 2. Read only part of the screen (**Dialogue bar** does this in one tap).
 3. Leave **More fluent translations** off.
-3. The translation is drawn into video frames and played in a **Picture-in-Picture** window.
+3. The newest translated line also goes to a **Live Activity**: it shows in the **Dynamic
+   Island** (long-press it to read the whole line) and on the Lock Screen. You can read the
+   dialogue without any window over the game. Optionally each new line pops the island open
+   briefly, or shows a banner on iPhones without a Dynamic Island.
+4. The translation is drawn into video frames and played in a **Picture-in-Picture** window.
    You can drag it anywhere, pinch to make it smaller or bigger, or swipe it to the screen edge
    to hide it. Its play/pause button freezes the translation.
 
@@ -83,8 +91,8 @@ On iPad you can also open FloatLingo in a window beside the game and use its lar
 3. Install it with **Sideloadly**, **AltStore** or **SideStore** using your Apple ID. These tools
    re-sign the app and its broadcast extension. FloatLingo reads its App Group from the
    provisioning profile, so it still works when the tool renames it.
-   - With a free Apple ID the app expires after 7 days and uses 2 of your 10 weekly App IDs
-     (the app plus the extension).
+   - With a free Apple ID the app expires after 7 days and uses 3 of your 10 weekly App IDs
+     (the app, the screen-capture extension and the Dynamic Island widget).
    - Make sure the tool keeps the **App Groups** entitlement and the **PlugIns** folder
      (don't enable options that remove app extensions).
 
@@ -118,8 +126,9 @@ open FloatLingo.xcodeproj
   menu label and button shows its translation in the right place.
 - For story scenes, switch to **Dialogue bar**. It's a much smaller window that shows just the
   dialogue.
-- Pinch the floating window down to its smallest size while you play. Pinch it bigger, or tap
-  ❚❚, when you want to read a menu.
+- Pinch the floating window down to its smallest size while you play, or swipe it off to the
+  side. The newest line stays in the Dynamic Island (long-press it to read it). Pinch the window
+  bigger, or tap ❚❚, when you want to read a menu.
 
 ## Troubleshooting
 
@@ -138,6 +147,8 @@ project.yml                     XcodeGen spec (app + broadcast extension)
 Config/                         Info.plists and entitlements
 Shared/                         Code shared by both targets (App Group, shared-memory frames, signals)
 FloatLingoBroadcast/            ReplayKit Broadcast Upload Extension
+FloatLingoWidgets/              Live Activity (Dynamic Island + Lock Screen)
+ActivityShared/                 Live Activity data shared by the app and the widget
 FloatLingo/App                  App entry, settings, app model
 FloatLingo/Recognition          Vision OCR + line grouping
 FloatLingo/Translation          Language catalog, detection, TranslationSession engine
@@ -161,5 +172,6 @@ FloatLingo/UI                   SwiftUI screens
 اضغط «Chinese game» ← اضغط «Start translating» واختر FloatLingo ثم Start Broadcast ← افتح اللعبة.
 في وضع **Lens** تظهر كل ترجمة فوق الكلمة الأصلية في نسخة مصغّرة من الشاشة، فتعرف أي ترجمة لأي زر.
 لتصغير النافذة: قرّبها بإصبعين (pinch)، أو اسحبها إلى حافة الشاشة لإخفائها.
+آخر سطر مترجم يظهر أيضاً في **Dynamic Island** أعلى الشاشة؛ اضغط عليه مطوّلاً لقراءة السطر كاملاً بدون أي نافذة فوق اللعبة.
 
 **التثبيت بدون ماك:** من تبويب Actions حمّل ملف FloatLingo.ipa ثم ثبّته عبر Sideloadly أو AltStore.

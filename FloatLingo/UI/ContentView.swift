@@ -180,6 +180,7 @@ struct ContentView: View {
             .disabled(!floating.isActive && !floating.isPossible)
 
             Toggle("Open automatically when I switch apps", isOn: $model.settings.autoStartFloatingWindow)
+            Toggle("Also show in the Dynamic Island", isOn: $model.settings.dynamicIsland)
 
             if floating.isPaused {
                 Button {
@@ -191,7 +192,7 @@ struct ContentView: View {
         } header: {
             Text("2 · Floating window")
         } footer: {
-            Text("The floating window stays on top of every app. Drag it anywhere, pinch to resize, or swipe it to the edge to hide it. Its ❚❚ button pauses translation.")
+            Text("The floating window stays on top of every app. Drag it anywhere, pinch to resize, or swipe it to the edge to hide it — the newest line stays in the Dynamic Island (long-press it). The window's ❚❚ button pauses translation.")
         }
     }
 
