@@ -17,10 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select newest stable Xcode
+      - name: Select newest stable Xcode (27 when the runner has it)
         run: |
           ls -d /Applications/Xcode*.app || true
           XCODE=$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|_rc|release.?candidate' | sort -V | tail -n 1)
+          PICKED=$(defaults read "$XCODE/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo 0)
+          DEFAULT=$(defaults read /Applications/Xcode.app/Contents/Info CFBundleShortVersionString 2>/dev/null || echo 0)
+          if [ "$(printf '%s\n%s\n' "$PICKED" "$DEFAULT" | sort -V | tail -n 1)" != "$PICKED" ]; then
+            XCODE=/Applications/Xcode.app
+          fi
           echo "Using $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
           xcodebuild -version

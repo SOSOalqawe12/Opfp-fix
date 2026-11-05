@@ -110,7 +110,7 @@ final class LiveTranslator: ObservableObject {
         forceNextPass = false
         let previousTimestamp = lastFrameTimestamp
 
-        let outcome: Result<RecognitionResult?, Error> = await Task.detached(priority: .userInitiated) {
+        let outcome = await Task.detached(priority: .userInitiated) { () -> Result<RecognitionResult?, Error> in
             guard let frame = FrameFile.read() else { return .success(nil) }
             if !force && frame.timestamp == previousTimestamp { return .success(nil) }
             do {
