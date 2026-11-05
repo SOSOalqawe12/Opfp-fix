@@ -136,6 +136,8 @@ struct AppSettings: Codable, Equatable {
     var preferHighFidelity: Bool = false
     var dynamicIsland: Bool = true
     var popUpNewLines: Bool = false
+    /// Opening FloatLingo while capturing shows the translated screen straight away.
+    var showScreenWhenOpened: Bool = true
 
     /// Area of the (upright) screen to read, normalized, origin top-left.
     var regionRect: CGRect {
@@ -156,7 +158,7 @@ struct AppSettings: Codable, Equatable {
         case sourceLanguageID, targetLanguageID, displayMode, theme, windowShape, fontScale, showOriginal
         case onlyLongestText, autoStartFloatingWindow, captureFPS, captureQuality, region
         case customTop, customBottom, customLeft, customRight, rotation, languageCorrection, smallText
-        case preferHighFidelity, dynamicIsland, popUpNewLines
+        case preferHighFidelity, dynamicIsland, popUpNewLines, showScreenWhenOpened
     }
 
     static let storageKey = "fl.appSettings.v2"
@@ -214,6 +216,7 @@ extension AppSettings {
         read(.preferHighFidelity, into: &preferHighFidelity)
         read(.dynamicIsland, into: &dynamicIsland)
         read(.popUpNewLines, into: &popUpNewLines)
+        read(.showScreenWhenOpened, into: &showScreenWhenOpened)
     }
 }
 

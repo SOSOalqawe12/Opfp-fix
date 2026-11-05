@@ -7,15 +7,36 @@ struct FloatLingoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(model)
-                .environmentObject(model.floating)
-                .environmentObject(model.translator)
-                .environmentObject(model.catalog)
-                .task { await model.start() }
+            ZStack {
+                ContentView()
+                // Shown on top (not as a full-screen cover) so the floating window's source view
+                // stays in the window and Picture in Picture can still start automatically.
+                if let screen = model.translatedScreen {
+                    TranslatedScreenView(screen: screen) { model.translatedScreen = nil }
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: model.translatedScreen?.id)
+            .environmentObject(model)
+            .environmentObject(model.floating)
+            .environmentObject(model.translator)
+            .environmentObject(model.catalog)
+            .task { await model.start() }
+            .onOpenURL { url in model.openURL(url) }
         }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.appBecameActive() }
+        .onChange(of: scenePhase) { old, phase in
+            switch phase {
+            case .active:
+                model.appWillComeToFront()
+                model.appBecameActive()
+            case .inactive where old == .background:
+                model.appWillComeToFront()
+            case .background:
+                model.appWentToBackground()
+            default:
+                break
+            }
         }
     }
 }

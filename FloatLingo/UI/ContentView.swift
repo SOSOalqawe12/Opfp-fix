@@ -56,6 +56,19 @@ struct ContentView: View {
             .tint(model.isBroadcasting ? Color.red : Color.accentColor)
             .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
 
+            if translator.hasTranslatedScreen {
+                Button {
+                    model.showTranslatedScreen()
+                } label: {
+                    Label("Show the last screen, translated", systemImage: "character.bubble.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.bordered)
+                .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 8, trailing: 12))
+            }
+
             HStack(spacing: 8) {
                 ForEach(QuickSetup.allCases) { setup in
                     let active = model.isApplied(setup)
@@ -80,7 +93,7 @@ struct ContentView: View {
             .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
         } footer: {
             Text(model.isBroadcasting
-                 ? "Translating. Switch to your game — pinch the floating window to make it smaller, or swipe it to the edge to hide it."
+                 ? "Translating. In your game, swipe right along the bottom edge (or tap the Dynamic Island) to see the whole screen with every word translated in place — swipe left to go back."
                  : "Pick a setup, tap Start, choose “FloatLingo” → Start Broadcast, then switch to your game.")
         }
     }
@@ -181,6 +194,7 @@ struct ContentView: View {
 
             Toggle("Open automatically when I switch apps", isOn: $model.settings.autoStartFloatingWindow)
             Toggle("Also show in the Dynamic Island", isOn: $model.settings.dynamicIsland)
+            Toggle("Opening FloatLingo shows the translated screen", isOn: $model.settings.showScreenWhenOpened)
 
             if floating.isPaused {
                 Button {

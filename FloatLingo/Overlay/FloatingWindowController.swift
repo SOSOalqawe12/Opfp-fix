@@ -43,6 +43,8 @@ final class FloatingWindowController: NSObject, ObservableObject {
 
     let view = SampleBufferView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
     var onPauseChanged: ((Bool) -> Void)?
+    /// Called when the user taps the floating window's "back to app" button.
+    var onRestore: (() -> Void)?
 
     nonisolated private let pausedFlag = AtomicFlag(false)
     private var controller: AVPictureInPictureController?
@@ -142,6 +144,7 @@ extension FloatingWindowController: AVPictureInPictureControllerDelegate {
 
     nonisolated func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                                 restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        Task { @MainActor in self.onRestore?() }
         completionHandler(true)
     }
 }

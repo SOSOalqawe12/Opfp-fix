@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import UIKit
 
 /// The real-time loop: newest screen frame → OCR → language filtering → translation →
 /// floating window (and the in-app live list).
@@ -63,6 +64,13 @@ final class LiveTranslator: ObservableObject {
     private var recentOutputKeys: [String] = []
     private var recentOutputSet = Set<String>()
 
+    /// Recent screens with their translations, newest last (for the translated-screen view).
+    private var snapshots: [ScreenSnapshot] = []
+    /// While FloatLingo itself is on screen (iPhone), the capture only shows FloatLingo, so
+    /// reading is paused and the last game screens are kept.
+    private(set) var isAppInFront = false
+    private var cameToFrontAt = Date.distantPast
+
     init(floating: FloatingWindowController, catalog: LanguageCatalog) {
         self.floating = floating
         self.catalog = catalog
@@ -70,8 +78,34 @@ final class LiveTranslator: ObservableObject {
 
     // MARK: - Control
 
+    func appWillComeToFront() {
+        // On iPad the app can sit beside the game, so keep reading there.
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        if !isAppInFront { cameToFrontAt = Date() }
+        isAppInFront = true
+    }
+
+    func appWentToBackground() {
+        guard isAppInFront else { return }
+        isAppInFront = false
+        reprocess()
+    }
+
+    var hasTranslatedScreen: Bool { !snapshots.isEmpty }
+
+    /// Builds the translated screen from the last game frame captured before FloatLingo came to
+    /// the front (frames from the app-switch animation are skipped).
+    func makeTranslatedScreen() async -> TranslatedScreen? {
+        let cutoff = isAppInFront ? cameToFrontAt.timeIntervalSince1970 - 0.25 : .greatestFiniteMagnitude
+        guard let snapshot = snapshots.last(where: { $0.frame.timestamp < cutoff }) ?? snapshots.first else { return nil }
+        let rtl = catalog.option(id: settings.targetLanguageID)?.isRightToLeft ?? false
+        return await Task.detached(priority: .userInitiated) {
+            TranslatedScreenBuilder.build(from: snapshot, isRightToLeft: rtl)
+        }.value
+    }
+
     func frameDidArrive() {
-        guard !isPaused else { return }
+        guard !isPaused, !isAppInFront else { return }
         if ocrRunning {
             ocrAgain = true
             return
@@ -125,7 +159,7 @@ final class LiveTranslator: ObservableObject {
             if let result = await recognizeLatestFrame() {
                 submit(result)
             }
-        } while ocrAgain && !isPaused
+        } while ocrAgain && !isPaused && !isAppInFront
         ocrRunning = false
     }
 
@@ -214,6 +248,15 @@ final class LiveTranslator: ObservableObject {
             if let translation = item.translation { remember(output: translation) }
         }
         announceNewestLine(in: translated)
+        if !isAppInFront || recognition.frame.timestamp < cameToFrontAt.timeIntervalSince1970 {
+            snapshots.append(ScreenSnapshot(
+                frame: recognition.frame, orientation: recognition.orientation, region: recognition.region,
+                items: translated.map {
+                    OverlayItem(original: $0.block.text, translation: $0.translation, rect: $0.block.rect,
+                                lineCount: $0.block.lineCount)
+                }))
+            if snapshots.count > 4 { snapshots.removeFirst(snapshots.count - 4) }
+        }
         lastLatency = max(0, Date().timeIntervalSince1970 - recognition.frameTimestamp)
         refreshOverlay()
     }

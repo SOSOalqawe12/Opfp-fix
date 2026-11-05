@@ -1,11 +1,30 @@
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
+
+/// Opens FloatLingo on the translated screen.
+let translatedScreenURL = URL(string: "floatlingo://screen")!
 
 @main
 struct FloatLingoWidgets: WidgetBundle {
     var body: some Widget {
         TranslationLiveActivity()
+        TranslatedScreenControl()
+    }
+}
+
+/// Control Center / Lock Screen / Action Button control: one press shows the game screen with
+/// every word translated in place.
+struct TranslatedScreenControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "com.floatlingo.translated-screen") {
+            ControlWidgetButton(action: OpenURLIntent(translatedScreenURL)) {
+                Label("Translate Screen", systemImage: "character.bubble")
+            }
+        }
+        .displayName("Translate Screen")
+        .description("Shows your game or app with every word translated in place.")
     }
 }
 
@@ -17,6 +36,7 @@ struct TranslationLiveActivity: Widget {
             LockScreenTranslationView(state: context.state)
                 .activityBackgroundTint(Color.black.opacity(0.75))
                 .activitySystemActionForegroundColor(.white)
+                .widgetURL(translatedScreenURL)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -43,6 +63,9 @@ struct TranslationLiveActivity: Widget {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                        Text("Tap to see the whole screen translated")
+                            .font(.caption2)
+                            .foregroundStyle(.teal)
                     }
                 }
             } compactLeading: {
@@ -57,6 +80,7 @@ struct TranslationLiveActivity: Widget {
                 Image(systemName: "character.bubble.fill")
                     .foregroundStyle(.teal)
             }
+            .widgetURL(translatedScreenURL)
         }
     }
 }

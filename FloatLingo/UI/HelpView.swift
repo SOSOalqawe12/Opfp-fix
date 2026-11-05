@@ -10,6 +10,14 @@ struct HelpView: View {
                 Step(number: 4, text: "Pinch the window small and move it where it doesn't cover what you need. Swipe it to the side to hide it.")
             }
 
+            Section("See every word translated in place") {
+                Text("While capture is on, open FloatLingo from your game and you see the game screen exactly as it was — with every word replaced by its translation, in the game's own colors. Hold anywhere to peek at the original, tap a word to see it bigger.")
+                Text("Fastest way: swipe right along the bottom edge of the screen to jump to FloatLingo, and swipe left to go straight back to the game.")
+                Text("Or tap the Dynamic Island, or tap the floating window and then its “back to app” button.")
+                Text("Back Tap: Settings › Accessibility › Touch › Back Tap › Double Tap, then pick a shortcut that runs FloatLingo's “Show Translated Screen” (create it in the Shortcuts app). Now double-tapping the back of your iPhone shows the translation.")
+                Text("Action Button / Control Center: add FloatLingo's “Translate Screen” control.")
+            }
+
             Section("Tips for games") {
                 Text("Set From to the game's language (for example Chinese) instead of Auto-detect — recognition is faster and more accurate.")
                 Text("Tap “Chinese game” on the main screen. Lens mode puts each translation on top of the word it translates, so you can tell which button is which.")
@@ -18,7 +26,7 @@ struct HelpView: View {
             }
 
             Section("Why a floating video window?") {
-                Text("Android lets apps draw see-through overlays on top of other apps. iOS and iPadOS don't allow that for any app. Picture in Picture is the only window that floats above every app, so FloatLingo draws the translations into it.")
+                Text("Android lets apps draw see-through overlays on top of other apps. iOS and iPadOS don't allow that for any app — not FloatLingo, not Google Translate, not any App Store app. So FloatLingo gives you the closest things that work: the translated screen one swipe away, the Dynamic Island, and a Picture-in-Picture window that floats above every app.")
                 Text("The screen capture also sees the floating window. FloatLingo ignores its own translations, but reading only part of the screen and keeping the window outside that area works best.")
             }
 

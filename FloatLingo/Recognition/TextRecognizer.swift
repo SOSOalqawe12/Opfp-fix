@@ -22,6 +22,10 @@ struct RecognitionResult {
     /// Low-resolution copy of the region that was read, used as the Lens background.
     /// It is deliberately too small for its own text to be read back by OCR.
     var preview: CGImage?
+    /// The frame itself and how it was read, to rebuild the full translated screen on demand.
+    var frame: CapturedFrame
+    var orientation: CGImagePropertyOrientation
+    var region: CGRect
 }
 
 struct RecognitionConfig: Equatable {
@@ -120,7 +124,8 @@ final class TextRecognizer: @unchecked Sendable {
         return RecognitionResult(blocks: blocks, regionAspect: size.width / size.height,
                                  frameTimestamp: frame.timestamp, frameSequence: frame.sequence,
                                  duration: Date().timeIntervalSince(started),
-                                 preview: Self.makePreview(of: image))
+                                 preview: Self.makePreview(of: image),
+                                 frame: frame, orientation: orientation, region: region)
     }
 
     /// The pixel area that changed since the previous thumbnail (grown to cover every previous

@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
     /// Download state of every source language → current target, keyed by language id.
     @Published private(set) var sourceStates: [String: TranslationEngine.PairState] = [:]
     @Published var downloadConfiguration: TranslationSession.Configuration?
+    /// The full translated screen currently shown on top of everything, if any.
+    @Published var translatedScreen: TranslatedScreen?
     @Published private(set) var downloadError: String?
 
     let catalog: LanguageCatalog
@@ -64,6 +66,10 @@ final class AppModel: ObservableObject {
             self.translator.setPaused(paused)
             self.liveActivity.setStatus(paused ? "Paused" : "Live", pair: self.pairLabel)
         }
+        floating.onRestore = { [weak self] in self?.showTranslatedScreen() }
+        NotificationCenter.default.addObserver(forName: ScreenRequest.notification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.handlePendingScreenRequest() }
+        }
         liveActivity.popUpNewLines = settings.popUpNewLines
         translator.onNewLine = { [weak self] translation, original in
             guard let self, self.settings.dynamicIsland else { return }
@@ -99,6 +105,37 @@ final class AppModel: ObservableObject {
     func appBecameActive() {
         refreshBroadcastState(force: false)
         Task { await refreshPairStatus() }
+        if ScreenRequest.consume() {
+            showTranslatedScreen()
+        } else if isBroadcasting && settings.showScreenWhenOpened && translatedScreen == nil && translator.hasTranslatedScreen {
+            showTranslatedScreen()
+        }
+    }
+
+    func appWillComeToFront() {
+        translator.appWillComeToFront()
+    }
+
+    func appWentToBackground() {
+        translatedScreen = nil
+        translator.appWentToBackground()
+    }
+
+    /// Shows the game screen with every word replaced by its translation.
+    func showTranslatedScreen() {
+        Task {
+            if let screen = await translator.makeTranslatedScreen() {
+                translatedScreen = screen
+            }
+        }
+    }
+
+    func handlePendingScreenRequest() {
+        if ScreenRequest.consume() { showTranslatedScreen() }
+    }
+
+    func openURL(_ url: URL) {
+        if url.host == "screen" { showTranslatedScreen() }
     }
 
     private func tick() {

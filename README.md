@@ -62,11 +62,28 @@ been measured on a device yet. The real number is shown live in the floating win
    You can drag it anywhere, pinch to make it smaller or bigger, or swipe it to the screen edge
    to hide it. Its play/pause button freezes the translation.
 
+### The translated screen (every word translated in place)
+
+While capture is on, switching to FloatLingo shows the game screen exactly as it was a moment
+ago, in full color, with every piece of text covered by its translation in the same place and
+in matching colors. It looks like the game itself is in your language. Hold to peek at the
+original, tap a word to see it bigger. Ways to get there in one gesture:
+
+- **Swipe right along the bottom edge** (iOS's normal app switching). Swipe left to go straight
+  back to the game.
+- **Tap the Dynamic Island**, or the Live Activity on the Lock Screen.
+- **Double-tap the back of the iPhone** (Back Tap): Settings → Accessibility → Touch → Back Tap
+  → Double Tap → a shortcut that runs FloatLingo's *Show Translated Screen*.
+- **Action Button / Control Center**: add FloatLingo's *Translate Screen* control.
+- **Tap the floating window**, then its "back to app" button.
+
 ### Why not a see-through overlay like on Android?
 
 iOS and iPadOS don't let any app draw over other apps. There is no equivalent of Android's
-`SYSTEM_ALERT_WINDOW` or accessibility overlay. Picture in Picture is the only public surface
-that floats above every app. FloatLingo makes the most of it:
+`SYSTEM_ALERT_WINDOW` or accessibility overlay, and this applies to every App Store or
+sideloaded app. Only a jailbroken device could do it, and iOS 27 has no jailbreak. Besides the
+translated screen and the Dynamic Island, Picture in Picture is the only surface that floats above
+every app. FloatLingo makes the most of it:
 
 - **Lens mode** (default): the window shows a dimmed, blurred copy of the screen with each
   translation placed exactly on top of the text it translates, like Google Lens. You can see
@@ -173,5 +190,9 @@ FloatLingo/UI                   SwiftUI screens
 في وضع **Lens** تظهر كل ترجمة فوق الكلمة الأصلية في نسخة مصغّرة من الشاشة، فتعرف أي ترجمة لأي زر.
 لتصغير النافذة: قرّبها بإصبعين (pinch)، أو اسحبها إلى حافة الشاشة لإخفائها.
 آخر سطر مترجم يظهر أيضاً في **Dynamic Island** أعلى الشاشة؛ اضغط عليه مطوّلاً لقراءة السطر كاملاً بدون أي نافذة فوق اللعبة.
+
+**الترجمة فوق كل كلمة:** نظام iOS يمنع أي تطبيق من الرسم فوق تطبيق آخر (هذا ليس ممكناً لأي تطبيق بدون جلبريك).
+الحل الأقرب: أثناء اللعب اسحب يميناً على الحافة السفلية للشاشة (أو اضغط على Dynamic Island) فتظهر لك شاشة اللعبة
+نفسها بالألوان وكل كلمة مكتوب فوقها ترجمتها في نفس مكانها، ثم اسحب يساراً للرجوع إلى اللعبة فوراً.
 
 **التثبيت بدون ماك:** من تبويب Actions حمّل ملف FloatLingo.ipa ثم ثبّته عبر Sideloadly أو AltStore.

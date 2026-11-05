@@ -1,7 +1,9 @@
 import Foundation
 import Synchronization
 
-/// A grayscale (8-bit luma) screen frame handed from the broadcast extension to the app.
+/// A screen frame handed from the broadcast extension to the app: an 8-bit luma (brightness)
+/// plane used for OCR, plus — when available — the interleaved CbCr color plane (4:2:0), used
+/// to show the translated screen in color.
 struct CapturedFrame {
     var width: Int
     var height: Int
@@ -13,6 +15,27 @@ struct CapturedFrame {
     /// Increases by one for every published frame.
     var sequence: UInt64
     var pixels: Data
+    /// `FrameColorFormat` raw value.
+    var colorFormat: UInt32 = 0
+    var chromaWidth = 0
+    var chromaHeight = 0
+    var chromaBytesPerRow = 0
+    var chroma: Data?
+}
+
+enum FrameColorFormat: UInt32 {
+    case grayOnly = 0
+    case fullRange420 = 1
+    case videoRange420 = 2
+}
+
+/// Optional color plane passed to `SharedFrameBuffer.publish`.
+struct ChromaPlane {
+    var width: Int
+    var height: Int
+    var bytesPerRow: Int
+    var format: FrameColorFormat
+    var pixels: UnsafeRawPointer
 }
 
 /// Shared-memory double buffer between the broadcast extension (writer) and the app (reader).
@@ -25,7 +48,7 @@ struct CapturedFrame {
 final class SharedFrameBuffer: @unchecked Sendable {
     static let slotCapacity = 6 * 1024 * 1024
     private static let magic: UInt32 = 0x464C_5348 // "FLSH"
-    private static let version: UInt32 = 1
+    private static let version: UInt32 = 2
     private static let headerSize = 64
     private static let slotHeaderSize = 64
     private static var fileSize: Int { headerSize + 2 * (slotHeaderSize + slotCapacity) }
@@ -42,6 +65,10 @@ final class SharedFrameBuffer: @unchecked Sendable {
     private static let bytesPerRowOffset = 16
     private static let orientationOffset = 20
     private static let timestampOffset = 24
+    private static let chromaWidthOffset = 32
+    private static let chromaHeightOffset = 36
+    private static let chromaBytesPerRowOffset = 40
+    private static let colorFormatOffset = 44
 
     /// The app's reader, attached on first use.
     static let shared: SharedFrameBuffer? = SharedFrameBuffer()
@@ -108,9 +135,13 @@ final class SharedFrameBuffer: @unchecked Sendable {
     /// Copies a frame into the slot that isn't the most recent one, then publishes it.
     @discardableResult
     func publish(width: Int, height: Int, bytesPerRow: Int, orientation: UInt32, timestamp: Double,
-                 pixels: UnsafeRawPointer) -> Bool {
+                 pixels: UnsafeRawPointer, chroma: ChromaPlane? = nil) -> Bool {
         let byteCount = height * bytesPerRow
         guard width > 0, height > 0, bytesPerRow >= width, byteCount <= Self.slotCapacity else { return false }
+        var color = chroma
+        if let plane = color, byteCount + plane.height * plane.bytesPerRow > Self.slotCapacity {
+            color = nil // keep OCR going in gray if color doesn't fit
+        }
 
         let latest = Int(base.load(fromByteOffset: Self.latestSlotOffset, as: UInt32.self))
         let slot = latest == 0 ? 1 : 0
@@ -122,6 +153,13 @@ final class SharedFrameBuffer: @unchecked Sendable {
         fence()
 
         memcpy(slotData(slot), pixels, byteCount)
+        if let plane = color {
+            memcpy(slotData(slot) + byteCount, plane.pixels, plane.height * plane.bytesPerRow)
+        }
+        header.storeBytes(of: UInt32(color?.width ?? 0), toByteOffset: Self.chromaWidthOffset, as: UInt32.self)
+        header.storeBytes(of: UInt32(color?.height ?? 0), toByteOffset: Self.chromaHeightOffset, as: UInt32.self)
+        header.storeBytes(of: UInt32(color?.bytesPerRow ?? 0), toByteOffset: Self.chromaBytesPerRowOffset, as: UInt32.self)
+        header.storeBytes(of: color?.format.rawValue ?? 0, toByteOffset: Self.colorFormatOffset, as: UInt32.self)
         header.storeBytes(of: UInt32(width), toByteOffset: Self.widthOffset, as: UInt32.self)
         header.storeBytes(of: UInt32(height), toByteOffset: Self.heightOffset, as: UInt32.self)
         header.storeBytes(of: UInt32(bytesPerRow), toByteOffset: Self.bytesPerRowOffset, as: UInt32.self)
@@ -160,12 +198,24 @@ final class SharedFrameBuffer: @unchecked Sendable {
             let byteCount = height * bytesPerRow
             guard width > 0, height > 0, bytesPerRow >= width, byteCount <= Self.slotCapacity else { return nil }
             let pixels = Data(bytes: slotData(slot), count: byteCount)
+
+            let chromaWidth = Int(header.load(fromByteOffset: Self.chromaWidthOffset, as: UInt32.self))
+            let chromaHeight = Int(header.load(fromByteOffset: Self.chromaHeightOffset, as: UInt32.self))
+            let chromaBytesPerRow = Int(header.load(fromByteOffset: Self.chromaBytesPerRowOffset, as: UInt32.self))
+            let colorFormat = header.load(fromByteOffset: Self.colorFormatOffset, as: UInt32.self)
+            let chromaCount = chromaHeight * chromaBytesPerRow
+            var chroma: Data?
+            if colorFormat != 0, chromaWidth > 0, chromaCount > 0, byteCount + chromaCount <= Self.slotCapacity {
+                chroma = Data(bytes: slotData(slot) + byteCount, count: chromaCount)
+            }
             fence()
             let after = header.load(fromByteOffset: Self.seqOffset, as: UInt64.self)
             guard before == after else { continue }
 
             return CapturedFrame(width: width, height: height, bytesPerRow: bytesPerRow, orientation: orientation,
-                                 timestamp: timestamp, sequence: count, pixels: pixels)
+                                 timestamp: timestamp, sequence: count, pixels: pixels,
+                                 colorFormat: chroma == nil ? 0 : colorFormat, chromaWidth: chromaWidth,
+                                 chromaHeight: chromaHeight, chromaBytesPerRow: chromaBytesPerRow, chroma: chroma)
         }
         return nil
     }

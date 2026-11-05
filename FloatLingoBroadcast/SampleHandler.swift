@@ -24,6 +24,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
     private var scaled = PlanarBuffer()
     private var converted = PlanarBuffer()
     private var thumbnail = PlanarBuffer()
+    private var chromaScaled = PlanarBuffer()
     /// Thumbnail of the last frame that was actually sent to the app.
     private var referenceThumbnail: [UInt8] = []
 
@@ -57,7 +58,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         AppGroup.defaults.set(false, forKey: SharedKeys.broadcastActive)
         SignalCenter.shared.post(.broadcastStopped)
         buffer = nil
-        scaled.free(); converted.free(); thumbnail.free()
+        scaled.free(); converted.free(); thumbnail.free(); chromaScaled.free()
     }
 
     // MARK: Frames
@@ -121,7 +122,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
             bytesPerRow: luma.rowBytes,
             orientation: orientation,
             timestamp: Date().timeIntervalSince1970,
-            pixels: UnsafeRawPointer(pixels)
+            pixels: UnsafeRawPointer(pixels),
+            chroma: chromaPlane(of: pixelBuffer, lumaWidth: Int(luma.width), lumaHeight: Int(luma.height))
         ) else { return }
 
         referenceThumbnail = current
@@ -164,6 +166,40 @@ final class SampleHandler: RPBroadcastSampleHandler {
         default:
             return nil
         }
+    }
+
+    /// The CbCr plane resized to match the (possibly downscaled) luma plane, so the app can
+    /// show the screen in color. Nearest-neighbour is plenty for color at half resolution.
+    private func chromaPlane(of pixelBuffer: CVPixelBuffer, lumaWidth: Int, lumaHeight: Int) -> ChromaPlane? {
+        let format: FrameColorFormat
+        switch CVPixelBufferGetPixelFormatType(pixelBuffer) {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: format = .fullRange420
+        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: format = .videoRange420
+        default: return nil
+        }
+        guard CVPixelBufferGetPlaneCount(pixelBuffer) >= 2,
+              let base = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1) else { return nil }
+        let srcWidth = CVPixelBufferGetWidthOfPlane(pixelBuffer, 1)
+        let srcHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1)
+        let srcRowBytes = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
+        let width = (lumaWidth + 1) / 2, height = (lumaHeight + 1) / 2
+        guard srcWidth > 0, srcHeight > 0, width > 0, height > 0 else { return nil }
+
+        if width == srcWidth && height == srcHeight {
+            return ChromaPlane(width: width, height: height, bytesPerRow: srcRowBytes, format: format,
+                               pixels: UnsafeRawPointer(base))
+        }
+        guard let out = chromaScaled.buffer(width: width * 2, height: height), let outData = out.data else { return nil }
+        for y in 0..<height {
+            let sy = min(srcHeight - 1, y * srcHeight / height)
+            let srcRow = (base + sy * srcRowBytes).assumingMemoryBound(to: UInt16.self)
+            let dstRow = (outData + y * out.rowBytes).assumingMemoryBound(to: UInt16.self)
+            for x in 0..<width {
+                dstRow[x] = srcRow[min(srcWidth - 1, x * srcWidth / width)]
+            }
+        }
+        return ChromaPlane(width: width, height: height, bytesPerRow: out.rowBytes, format: format,
+                           pixels: UnsafeRawPointer(outData))
     }
 
     private func makeThumbnail(of luma: vImage_Buffer) -> [UInt8]? {
